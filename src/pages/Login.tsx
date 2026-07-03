@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Moon, Sun } from 'lucide-react';
+import { Lock, Moon, Sun, User } from 'lucide-react';
 import { authApi } from '../api/auth';
 import { saveAuth } from '../lib/auth';
 import { getConfig } from '../config/environments';
@@ -10,8 +10,8 @@ import { Button } from '../components/ui/Button';
 import { Input } from '../components/ui/Input';
 
 export function LoginPage() {
-  const [login, setLogin] = useState('superadmin@resvepro.local');
-  const [password, setPassword] = useState('Admin123!');
+  const [login, setLogin] = useState('');
+  const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const navigate = useNavigate();
@@ -71,7 +71,8 @@ export function LoginPage() {
           <Input
             label="Correo o usuario"
             type="text"
-            placeholder="superadmin@resvepro.local o superadmin"
+            icon={User}
+            placeholder="Correo o nombre de usuario"
             value={login}
             onChange={(e) => setLogin(e.target.value)}
             autoComplete="username"
@@ -79,6 +80,8 @@ export function LoginPage() {
           <Input
             label="Contraseña"
             type="password"
+            icon={Lock}
+            placeholder="Tu contraseña"
             value={password}
             onChange={(e) => setPassword(e.target.value)}
             autoComplete="current-password"

@@ -1,5 +1,6 @@
 node_modules
 dist
+.firebase
 package-lock.json
 .pnpm-store
 .env

@@ -10,7 +10,8 @@
     "build:dev": "cross-env EGW_ENV=development tsc -b && vite build --mode development",
     "preview": "cross-env EGW_ENV=production vite preview --mode production",
     "preview:dev": "cross-env EGW_ENV=development vite preview --mode development",
-    "lint": "eslint ."
+    "lint": "eslint .",
+    "deploy:firebase": "pnpm build && firebase deploy --only hosting"
   },
   "dependencies": {
     "@hookform/resolvers": "^3.9.0",
@@ -35,6 +36,7 @@
     "@vitejs/plugin-react": "^4.3.0",
     "autoprefixer": "^10.4.20",
     "cross-env": "^7.0.3",
+    "firebase-tools": "^14.0.0",
     "postcss": "^8.4.49",
     "tailwindcss": "^3.4.0",
     "typescript": "^5.7.0",
