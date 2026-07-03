@@ -1,0 +1,168 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    color-scheme: light;
+    --color-bg-page: #f7f3ec;
+    --color-bg-elevated: rgba(255, 255, 255, 0.82);
+    --color-bg-subtle: rgba(12, 15, 20, 0.05);
+    --color-bg-input: rgba(255, 255, 255, 0.92);
+    --color-text: #0c0f14;
+    --color-text-secondary: rgba(12, 15, 20, 0.55);
+    --color-text-muted: rgba(12, 15, 20, 0.4);
+    --color-border: rgba(12, 15, 20, 0.1);
+    --color-border-subtle: rgba(12, 15, 20, 0.08);
+    --shadow-card: 0 4px 24px -4px rgba(12, 15, 20, 0.08);
+  }
+
+  .dark {
+    color-scheme: dark;
+    --color-bg-page: #0c0f14;
+    --color-bg-elevated: rgba(21, 26, 34, 0.92);
+    --color-bg-subtle: rgba(255, 255, 255, 0.05);
+    --color-bg-input: #1e2530;
+    --color-text: #f7f3ec;
+    --color-text-secondary: rgba(247, 243, 236, 0.6);
+    --color-text-muted: rgba(247, 243, 236, 0.42);
+    --color-border: rgba(255, 255, 255, 0.1);
+    --color-border-subtle: rgba(255, 255, 255, 0.08);
+    --shadow-card: 0 4px 24px -4px rgba(0, 0, 0, 0.35);
+  }
+
+  html {
+    @apply scroll-smooth;
+  }
+
+  body {
+    background-color: var(--color-bg-page);
+    color: var(--color-text);
+    @apply font-sans antialiased bg-grain transition-colors duration-300;
+  }
+}
+
+@layer components {
+  .glass-card {
+    @apply rounded-2xl backdrop-blur-sm;
+    background-color: var(--color-bg-elevated);
+    border: 1px solid var(--color-border);
+    box-shadow: var(--shadow-card);
+  }
+
+  .surface-muted {
+    background-color: var(--color-bg-subtle);
+  }
+
+  .text-theme {
+    color: var(--color-text);
+  }
+
+  .text-theme-secondary {
+    color: var(--color-text-secondary);
+  }
+
+  .text-theme-muted {
+    color: var(--color-text-muted);
+  }
+
+  .border-theme {
+    border-color: var(--color-border);
+  }
+
+  .bg-theme-page {
+    background-color: var(--color-bg-page);
+  }
+
+  .bg-theme-input {
+    background-color: var(--color-bg-input);
+  }
+
+  .input-field {
+    @apply w-full rounded-xl px-4 py-3 transition focus:border-gold focus:outline-none focus:ring-2 focus:ring-gold/20 disabled:opacity-60;
+    background-color: var(--color-bg-input);
+    border: 1px solid var(--color-border);
+    color: var(--color-text);
+  }
+
+  .input-field::placeholder {
+    color: var(--color-text-muted);
+  }
+
+  .chapter-editor {
+    @apply overflow-hidden rounded-xl;
+    border: 1px solid var(--color-border);
+    background-color: var(--color-bg-input);
+  }
+
+  .chapter-editor-toolbar {
+    @apply flex flex-wrap items-center gap-0.5 border-b px-2 py-1.5;
+    border-color: var(--color-border);
+    background-color: var(--color-bg-subtle);
+  }
+
+  .chapter-editor-btn {
+    @apply flex h-8 w-8 items-center justify-center rounded-lg transition;
+    color: var(--color-text-secondary);
+  }
+
+  .chapter-editor-btn:hover:not(:disabled) {
+    background-color: var(--color-bg-subtle);
+    color: var(--color-text);
+  }
+
+  .chapter-editor-btn.is-active {
+    @apply bg-gold/15 text-gold;
+  }
+
+  .chapter-editor-btn:disabled {
+    @apply opacity-35;
+  }
+
+  .chapter-editor-divider {
+    @apply mx-1 h-5 w-px;
+    background-color: var(--color-border);
+  }
+
+  .chapter-editor .tiptap {
+    @apply min-h-[220px] px-4 py-3 outline-none;
+    color: var(--color-text);
+  }
+
+  .chapter-editor .tiptap p.is-editor-empty:first-child::before {
+    color: var(--color-text-muted);
+    content: attr(data-placeholder);
+    float: left;
+    height: 0;
+    pointer-events: none;
+  }
+
+  .chapter-editor .tiptap h2 {
+    @apply mb-3 mt-4 text-xl font-semibold;
+  }
+
+  .chapter-editor .tiptap h3 {
+    @apply mb-2 mt-3 text-lg font-semibold;
+  }
+
+  .chapter-editor .tiptap p {
+    @apply mb-3 leading-relaxed;
+  }
+
+  .chapter-editor .tiptap ul {
+    @apply mb-3 list-disc pl-6;
+  }
+
+  .chapter-editor .tiptap ol {
+    @apply mb-3 list-decimal pl-6;
+  }
+
+  .chapter-editor .tiptap blockquote {
+    @apply mb-3 border-l-4 border-gold/50 pl-4 italic;
+    color: var(--color-text-secondary);
+  }
+
+  .chapter-editor .tiptap a {
+    @apply text-gold underline;
+  }
+}

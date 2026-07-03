@@ -1,0 +1,27 @@
+---
+description: Patrones React para páginas, API y formularios
+globs: src/**/*.{tsx,ts}
+alwaysApply: false
+---
+
+# Páginas y componentes admin
+
+## Datos y auth
+
+- TanStack Query (`useQuery` / `useMutation`); respuesta en `res.data.data`
+- Axios en `src/api/client.ts` con refresh JWT automático en 401
+- Tokens en `localStorage` vía `src/lib/auth.ts`
+
+## Nuevas páginas CRUD
+
+Seguir el patrón existente:
+
+1. Endpoint en `src/api/admin.ts`
+2. Página con `PageHeader` + `DataTable` o formulario
+3. Formularios: react-hook-form + zod + `@hookform/resolvers`
+4. Componentes reutilizables en `src/components/ui/`
+5. Ruta en `App.tsx` dentro de `ProtectedRoute` + `Layout`
+
+## UI
+
+Tailwind + `.glass-card`. Fuentes Instrument Serif (títulos) y Plus Jakarta Sans (cuerpo).

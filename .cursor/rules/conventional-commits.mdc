@@ -1,0 +1,38 @@
+---
+description: Conventional Commits en la plataforma EGW
+alwaysApply: true
+---
+
+# Conventional Commits
+
+Formato: `<tipo>(<scope>): <descripción en imperativo>`
+
+## Tipos
+
+`feat` | `fix` | `docs` | `style` | `refactor` | `test` | `chore`
+
+## Scopes
+
+| Repo | Scope |
+|------|-------|
+| egw-api | `api` |
+| egw-admin | `admin` |
+| egw-mobile | `mobile` |
+| egw-docs | `docs` o sin scope |
+
+## Ejemplos
+
+```
+feat(api): add book chapters endpoint
+fix(admin): refresh token on 401
+fix(mobile): sync bookmark timestamp
+docs: update openapi sync endpoints
+chore(api): bump prisma to 6.1
+```
+
+## Reglas multi-repo
+
+- Cambio de endpoint → commits en **egw-api** + **egw-docs** (`openapi.yaml`, `API.md`)
+- Cambio de schema → **egw-api** (migración) + **egw-docs** (`DATABASE.md`)
+- Nuevo permiso → **egw-api** + **egw-docs** (`ROLES.md`)
+- No mezclar código de distintos repos en un solo commit

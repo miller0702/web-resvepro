@@ -1,0 +1,28 @@
+---
+description: Contexto egw-admin y reglas multi-repo
+alwaysApply: true
+---
+
+# egw-admin — panel editorial
+
+Cliente delgado de **egw-api**. No duplicar lógica de negocio aquí.
+
+## Comandos
+
+```bash
+pnpm install && pnpm dev   # http://localhost:8002
+```
+
+Requiere API en `http://localhost:8000/api/v1`.
+
+## Reglas clave
+
+- Usar **pnpm** (`.npmrc` exige package-manager-strict)
+- Config en `src/config/environments/`; alias `@/` → `src/`
+- Si falta un endpoint, implementarlo primero en egw-api + openapi.yaml
+- Commits: `feat(admin):`, `fix(admin):`, etc.
+- UI en **español**; paleta editorial (`ink`, `parchment`, `gold`, `sage`, `ember`)
+
+Login seed: `superadmin@resvepro.local` / `Admin123!` (también usuario `superadmin`)
+
+Ver [AGENTS.md](../AGENTS.md) para rutas y estado del CRUD.
