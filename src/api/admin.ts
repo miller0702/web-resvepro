@@ -100,6 +100,7 @@ export const adminApi = {
   createUser: (data: unknown) => apiClient.post('/admin/users', data),
   getUserById: (id: string) => apiClient.get(`/admin/users/${id}`),
   updateUser: (id: string, data: unknown) => apiClient.patch(`/admin/users/${id}`, data),
+  deleteUserAccount: (id: string) => apiClient.post(`/admin/users/${id}/delete-account`),
   impersonateUser: (id: string) => apiClient.post(`/admin/users/${id}/impersonate`),
   stopImpersonation: () => apiClient.post('/admin/impersonate/stop'),
   getAuditLogs: (params?: { page?: number; limit?: number; action?: string }) =>

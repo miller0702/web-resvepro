@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { FileText, Globe, Lock, Palette, Settings2, ShieldCheck } from 'lucide-react';
+import { FileText, Globe, Link2, Lock, Palette, Settings2, ShieldCheck } from 'lucide-react';
 import { platformApi } from '../api/platform';
 import { PageHeader } from '../components/ui/PageHeader';
 import { Button } from '../components/ui/Button';
@@ -8,6 +8,7 @@ import { Input } from '../components/ui/Input';
 import { Loading } from '../components/ui/Loading';
 import { Badge } from '../components/ui/Badge';
 import { getUser } from '../lib/auth';
+import { buildLegalPublicUrl } from '../utils/legalSlugs';
 
 type Tab = 'general' | 'branding' | 'security' | 'legal';
 
@@ -75,6 +76,7 @@ export function SettingsPage() {
   });
 
   const [form, setForm] = useState({
+    publicSiteUrl: 'https://resvepro.web.app',
     supportEmail: '',
     welcomeMessage: '',
     maintenanceMode: 'false',
@@ -114,6 +116,7 @@ export function SettingsPage() {
   useEffect(() => {
     if (settings) {
       setForm({
+        publicSiteUrl: settings.publicSiteUrl ?? 'https://resvepro.web.app',
         supportEmail: settings.supportEmail ?? '',
         welcomeMessage: settings.welcomeMessage ?? '',
         maintenanceMode: settings.maintenanceMode ?? 'false',
@@ -222,6 +225,19 @@ export function SettingsPage() {
                 </p>
               </div>
 
+              <Input
+                label="URL pública del sitio"
+                value={form.publicSiteUrl}
+                onChange={(e) => setForm((f) => ({ ...f, publicSiteUrl: e.target.value }))}
+                placeholder="https://resvepro.web.app"
+              />
+              <p className="-mt-3 text-xs text-theme-muted">
+                Base para enlaces legales públicos (Play Store, app). Ejemplo privacidad:{' '}
+                {buildLegalPublicUrl(form.publicSiteUrl || 'https://resvepro.web.app', 'PRIVACY')}
+                {' · '}
+                Eliminación de cuenta:{' '}
+                {(form.publicSiteUrl || 'https://resvepro.web.app').replace(/\/$/, '')}/account-deletion
+              </p>
               <Input
                 label="Email de soporte"
                 value={form.supportEmail}
@@ -544,6 +560,41 @@ export function SettingsPage() {
           </div>
 
           <div className="glass-card w-full space-y-5 p-6 sm:p-8">
+            {legalForm.isPublished ? (
+              <div className="rounded-xl border border-sage/30 bg-sage/10 p-4 dark:bg-sage/15">
+                <div className="flex flex-wrap items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <p className="flex items-center gap-2 text-sm font-medium text-theme">
+                      <Link2 className="h-4 w-4 text-sage" strokeWidth={1.75} />
+                      URL pública
+                    </p>
+                    <p className="mt-1 break-all font-mono text-sm text-theme-secondary">
+                      {buildLegalPublicUrl(
+                        settings?.publicSiteUrl ?? 'https://resvepro.web.app',
+                        selectedLegalType,
+                      )}
+                    </p>
+                    <p className="mt-2 text-xs text-theme-muted">
+                      Usa esta URL en Google Play Console y en la ficha de la app.
+                    </p>
+                  </div>
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    size="sm"
+                    onClick={() => {
+                      const url = buildLegalPublicUrl(
+                        settings?.publicSiteUrl ?? 'https://resvepro.web.app',
+                        selectedLegalType,
+                      );
+                      void navigator.clipboard.writeText(url);
+                    }}
+                  >
+                    Copiar URL
+                  </Button>
+                </div>
+              </div>
+            ) : null}
             <div className="rounded-xl bg-gold/10 p-4 dark:bg-gold/15">
               <p className="text-sm text-ink/70 dark:text-parchment/70">
                 El usuario de la app debe aceptar estos documentos al registrarse o cuando publiques

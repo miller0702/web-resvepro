@@ -30,11 +30,15 @@ import { AppPage } from './pages/app/AppPage';
 import { AppSectionEditPage } from './pages/app/AppSectionEditPage';
 import { ManualEditPage } from './pages/app/ManualEditPage';
 import { TutorialEditPage } from './pages/app/TutorialEditPage';
+import { LegalPublicPage } from './pages/legal/LegalPublicPage';
+import { AccountDeletionPage } from './pages/legal/AccountDeletionPage';
 
 export default function App() {
   return (
     <Routes>
       <Route path="/login" element={<LoginPage />} />
+      <Route path="/legal/:slug" element={<LegalPublicPage />} />
+      <Route path="/account-deletion" element={<AccountDeletionPage />} />
       <Route
         element={
           <ProtectedRoute>

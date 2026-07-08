@@ -22,6 +22,7 @@ const baseSchema = z.object({
   password: z.string().min(8, 'Mínimo 8 caracteres').optional(),
   roleCodes: z.array(z.string()).min(1, 'Selecciona al menos un rol'),
   isActive: z.boolean(),
+  canPost: z.boolean(),
 });
 
 type FormData = z.infer<typeof baseSchema>;
@@ -60,6 +61,7 @@ export function UserFormPage() {
     defaultValues: {
       roleCodes: defaultContext === 'app' ? ['LECTOR'] : ['ADMIN_GENERAL'],
       isActive: true,
+      canPost: true,
     },
   });
 
@@ -74,6 +76,7 @@ export function UserFormPage() {
         lastName: String(userQuery.data.lastName ?? ''),
         roleCodes: (userQuery.data.roles as string[]) ?? [],
         isActive: Boolean(userQuery.data.isActive),
+        canPost: userQuery.data.canPost !== false,
       });
     }
   }, [userQuery.data, reset]);
@@ -90,10 +93,19 @@ export function UserFormPage() {
         lastName: data.lastName,
         roleCodes: data.roleCodes,
         isActive: data.isActive,
+        canPost: data.canPost,
         ...(data.password ? { password: data.password } : {}),
       };
       return isEdit ? adminApi.updateUser(id!, payload) : adminApi.createUser(payload);
     },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['users'] });
+      navigate('/users');
+    },
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: () => adminApi.deleteUserAccount(id!),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['users'] });
       navigate('/users');
@@ -169,8 +181,41 @@ export function UserFormPage() {
 
         <label className="flex items-center gap-2 text-sm text-theme-secondary">
           <input type="checkbox" {...register('isActive')} className="rounded" />
-          Usuario activo
+          Cuenta activa (puede iniciar sesión)
         </label>
+
+        {defaultContext === 'app' ? (
+          <label className="flex items-center gap-2 text-sm text-theme-secondary">
+            <input type="checkbox" {...register('canPost')} className="rounded" />
+            Puede publicar en la comunidad
+          </label>
+        ) : null}
+
+        {isEdit && defaultContext === 'app' ? (
+          <div className="rounded-xl border border-ember/30 bg-ember/5 p-4">
+            <p className="text-sm font-medium text-ember">Zona de riesgo</p>
+            <p className="mt-1 text-sm text-theme-secondary">
+              Elimina y anonimiza la cuenta del lector, borrando datos personales y publicaciones.
+            </p>
+            <Button
+              type="button"
+              variant="danger"
+              className="mt-3"
+              disabled={deleteMutation.isPending}
+              onClick={() => {
+                if (
+                  window.confirm(
+                    '¿Eliminar esta cuenta de forma permanente? Esta acción no se puede deshacer.',
+                  )
+                ) {
+                  deleteMutation.mutate();
+                }
+              }}
+            >
+              {deleteMutation.isPending ? 'Eliminando...' : 'Eliminar cuenta'}
+            </Button>
+          </div>
+        ) : null}
 
         {saveMutation.isError && (
           <p className="text-sm text-ember">No se pudo guardar el usuario. Revisa los datos.</p>
