@@ -8,7 +8,7 @@ import { Button } from '../../components/ui/Button';
 import { Input } from '../../components/ui/Input';
 import { Loading } from '../../components/ui/Loading';
 import { useForm } from 'react-hook-form';
-import { APP_ICON_GROUPS } from '../../lib/app-icons';
+import { IconPicker } from '../../components/ui/IconPicker';
 import type { TutorialStep } from './TutorialPage';
 
 interface FormValues {
@@ -104,20 +104,11 @@ export function TutorialEditPage() {
           <label className="block text-sm font-medium text-theme-secondary">Descripción</label>
           <textarea {...register('body', { required: true })} rows={6} className="input-field" />
         </div>
-        <div className="space-y-1.5">
-          <label className="block text-sm font-medium text-theme-secondary">Icono</label>
-          <select {...register('icon')} className="input-field">
-            {APP_ICON_GROUPS.map((group) => (
-              <optgroup key={group.label} label={group.label}>
-                {group.icons.map((icon) => (
-                  <option key={icon.value} value={icon.value}>
-                    {icon.label}
-                  </option>
-                ))}
-              </optgroup>
-            ))}
-          </select>
-        </div>
+        <IconPicker
+          label="Icono"
+          value={watch('icon')}
+          onChange={(icon) => setValue('icon', icon, { shouldDirty: true })}
+        />
         <label className="flex cursor-pointer items-center gap-3 rounded-xl border px-4 py-3 surface-muted" style={{ borderColor: 'var(--color-border)' }}>
           <input
             type="checkbox"

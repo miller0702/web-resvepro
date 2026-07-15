@@ -9,6 +9,21 @@ import { useClientList } from '../hooks/useClientList';
 type ReportStatus = 'PENDING' | 'IN_REVIEW' | 'RESOLVED' | 'DISMISSED';
 type ReportTargetType = 'POST' | 'USER' | 'COMMENT' | 'POST_IMAGE';
 
+interface TargetPreview {
+  kind: ReportTargetType;
+  available: boolean;
+  body?: string | null;
+  authorName?: string | null;
+  authorUsername?: string | null;
+  imageUrls?: string[];
+  user?: {
+    id: string;
+    name: string;
+    username: string;
+    email: string;
+  } | null;
+}
+
 interface ModerationReportRow extends Record<string, unknown> {
   id: string;
   targetType: ReportTargetType;
@@ -20,6 +35,7 @@ interface ModerationReportRow extends Record<string, unknown> {
   adminNotes?: string | null;
   createdAt: string;
   reporter?: { email: string; name: string; username: string } | null;
+  target?: TargetPreview | null;
 }
 
 const STATUS_LABELS: Record<ReportStatus, string> = {
@@ -51,6 +67,59 @@ const FILTERS: { id: ReportStatus | 'ALL'; label: string }[] = [
   { id: 'DISMISSED', label: 'Descartados' },
 ];
 
+function TargetContent({ target, targetId }: { target?: TargetPreview | null; targetId: string }) {
+  if (!target?.available) {
+    return (
+      <div className="rounded-xl border border-dashed border-[var(--color-border)] p-4 text-sm text-theme-muted">
+        El contenido reportado ya no está disponible (eliminado o no encontrado).
+        <p className="mt-1 font-mono text-xs">ID: {targetId}</p>
+      </div>
+    );
+  }
+
+  if (target.kind === 'USER' && target.user) {
+    return (
+      <div className="rounded-xl surface-muted p-4 text-sm text-theme-secondary">
+        <p className="font-medium text-theme">{target.user.name}</p>
+        <p>@{target.user.username}</p>
+        <p>{target.user.email}</p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-3 rounded-xl surface-muted p-4">
+      {(target.authorName || target.authorUsername) && (
+        <p className="text-sm text-theme-secondary">
+          <span className="font-medium text-theme">{target.authorName ?? 'Usuario'}</span>
+          {target.authorUsername ? ` · @${target.authorUsername}` : ''}
+        </p>
+      )}
+      {target.body ? (
+        <p className="whitespace-pre-wrap text-sm leading-relaxed text-theme">{target.body}</p>
+      ) : null}
+      {target.imageUrls && target.imageUrls.length > 0 ? (
+        <div className="flex flex-wrap gap-2">
+          {target.imageUrls.map((url) => (
+            <a
+              key={url}
+              href={url}
+              target="_blank"
+              rel="noreferrer"
+              className="block overflow-hidden rounded-lg border border-[var(--color-border)]"
+            >
+              <img src={url} alt="Contenido reportado" className="h-28 max-w-[10rem] object-cover" />
+            </a>
+          ))}
+        </div>
+      ) : null}
+      {!target.body && !target.imageUrls?.length ? (
+        <p className="text-sm text-theme-muted">Sin texto ni imágenes para mostrar.</p>
+      ) : null}
+    </div>
+  );
+}
+
 export function ModerationReportsPage() {
   const queryClient = useQueryClient();
   const [filter, setFilter] = useState<ReportStatus | 'ALL'>('PENDING');
@@ -77,6 +146,7 @@ export function ModerationReportsPage() {
       'details',
       'targetId',
       (row) => String((row.reporter as { email?: string } | undefined)?.email ?? ''),
+      (row) => String((row.target as TargetPreview | undefined)?.body ?? ''),
     ],
   });
 
@@ -125,7 +195,7 @@ export function ModerationReportsPage() {
         isLoading={isLoading}
         search={search}
         onSearchChange={setSearch}
-        searchPlaceholder="Buscar por motivo, ID o email…"
+        searchPlaceholder="Buscar por motivo, contenido o email…"
         meta={list.meta}
         page={list.page}
         onPageChange={list.setPage}
@@ -137,6 +207,21 @@ export function ModerationReportsPage() {
             render: (row) => TARGET_LABELS[row.targetType as ReportTargetType] ?? row.targetType,
           },
           { key: 'reason', label: 'Motivo' },
+          {
+            key: 'target',
+            label: 'Contenido',
+            render: (row) => {
+              const target = row.target as TargetPreview | undefined;
+              if (!target?.available) return <span className="text-theme-muted">No disponible</span>;
+              if (target.kind === 'USER') return target.user?.name ?? 'Usuario';
+              const preview = (target.body ?? '').trim();
+              if (preview) {
+                return preview.length > 80 ? `${preview.slice(0, 80)}…` : preview;
+              }
+              if (target.imageUrls?.length) return `${target.imageUrls.length} imagen(es)`;
+              return '—';
+            },
+          },
           {
             key: 'reporter',
             label: 'Reportado por',
@@ -181,10 +266,7 @@ export function ModerationReportsPage() {
                   {TARGET_LABELS[selected.targetType]} · {selected.reason}
                 </h2>
                 <p className="mt-1 text-sm text-theme-secondary">
-                  ID objetivo: <code>{selected.targetId}</code>
-                </p>
-                <p className="text-sm text-theme-secondary">
-                  {selected.reporter?.name ?? 'Usuario'} · {selected.reporter?.email ?? '—'}
+                  Reportado por {selected.reporter?.name ?? 'Usuario'} · {selected.reporter?.email ?? '—'}
                 </p>
               </div>
               <button type="button" onClick={() => setSelected(null)} className="text-theme-muted hover:text-theme">
@@ -193,10 +275,17 @@ export function ModerationReportsPage() {
             </div>
 
             <div className="space-y-5">
+              <div>
+                <p className="mb-2 text-xs font-semibold uppercase tracking-wider text-theme-muted">
+                  Contenido reportado
+                </p>
+                <TargetContent target={selected.target} targetId={selected.targetId} />
+              </div>
+
               {selected.details ? (
                 <div>
                   <p className="mb-2 text-xs font-semibold uppercase tracking-wider text-theme-muted">
-                    Detalle del reporte
+                    Detalle del denunciante
                   </p>
                   <p className="whitespace-pre-wrap rounded-xl surface-muted p-4 text-sm leading-relaxed text-theme-secondary">
                     {selected.details}

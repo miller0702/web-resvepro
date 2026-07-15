@@ -10,6 +10,7 @@ import { Badge } from '../components/ui/Badge';
 import { Button } from '../components/ui/Button';
 import { Loading } from '../components/ui/Loading';
 import { APP_READER_ROLE, getRoleMeta } from '../lib/rbac';
+import { confirmDialog } from '../lib/dialog';
 
 interface RoleRow {
   id: string;
@@ -178,9 +179,14 @@ export function RolesPage() {
   });
 
   const handleDelete = (id: string) => {
-    if (window.confirm('¿Eliminar este rol? Esta acción no se puede deshacer.')) {
-      deleteMutation.mutate(id);
-    }
+    void confirmDialog({
+      title: 'Eliminar rol',
+      message: '¿Eliminar este rol? Esta acción no se puede deshacer.',
+      confirmLabel: 'Eliminar',
+      tone: 'danger',
+    }).then((ok) => {
+      if (ok) deleteMutation.mutate(id);
+    });
   };
 
   const { panelRoles, appRoles } = useMemo(() => {

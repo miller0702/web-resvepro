@@ -64,10 +64,10 @@ export function AppSectionsTab() {
                   <div className="flex min-w-0 items-start gap-4">
                     <div className="flex gap-2">
                       <div className="flex h-11 w-11 items-center justify-center rounded-xl surface-muted text-theme-secondary">
-                        <Icon className="h-5 w-5" strokeWidth={1.75} />
+                        <Icon className="h-5 w-5" />
                       </div>
                       <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-gold/15 text-gold-dim dark:text-gold-light">
-                        <IconActive className="h-5 w-5" strokeWidth={1.75} />
+                        <IconActive className="h-5 w-5" />
                       </div>
                     </div>
                     <div className="min-w-0">

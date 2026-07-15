@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { adminApi } from '../../api/admin';
 import { mediaApi } from '../../api/media';
 import { PageHeader } from '../../components/ui/PageHeader';
@@ -10,6 +10,8 @@ import { MediaUpload } from '../../components/MediaUpload';
 import { Badge } from '../../components/ui/Badge';
 import { Loading } from '../../components/ui/Loading';
 import { formatDuration } from '../../utils/format';
+import { ResourceModeHeaderAction, useResourceMode } from '../../hooks/useResourceMode';
+import { DetailField, DetailFlags, DetailGrid, DetailSection } from '../../components/ui/DetailView';
 
 function parseYouTubeVideoId(input: string): string | null {
   const value = input.trim();
@@ -45,6 +47,7 @@ export function VideoFormPage() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const isNew = id === 'new';
+  const { isView, editHref } = useResourceMode();
 
   const [form, setForm] = useState({
     title: '',
@@ -70,6 +73,7 @@ export function VideoFormPage() {
     queryKey: ['categories', 'VIDEO'],
     queryFn: async () =>
       (await adminApi.getCategories('VIDEO')).data.data as Array<{ id: string; name: string }>,
+    enabled: !isNew,
   });
 
   useEffect(() => {
@@ -99,6 +103,7 @@ export function VideoFormPage() {
   }, [videoQuery.data]);
 
   useEffect(() => {
+    if (isView) return;
     const url = form.videoUrl.trim();
     if (!isYouTubeUrl(url)) {
       setPreview(null);
@@ -137,7 +142,12 @@ export function VideoFormPage() {
     }, 500);
 
     return () => clearTimeout(timer);
-  }, [form.videoUrl, form.title]);
+  }, [form.videoUrl, form.title, isView]);
+
+  const deleteMutation = useMutation({
+    mutationFn: () => adminApi.deleteVideo(id!),
+    onSuccess: () => navigate('/videos'),
+  });
 
   const save = async () => {
     const url = form.videoUrl.trim();
@@ -175,16 +185,93 @@ export function VideoFormPage() {
   if (!isNew && videoQuery.isLoading) return <Loading />;
 
   const youtubeMode = isYouTubeUrl(form.videoUrl);
+  const isPublished = form.isPublished;
+  const videoTitle = form.title || 'Video';
+  const categoryName = (categoriesQuery.data ?? []).find((c) => c.id === form.categoryId)?.name
+    ?? (videoQuery.data?.category as { name?: string } | null)?.name;
+
+  const headerActions = !isNew ? (
+    <ResourceModeHeaderAction
+      isView={isView}
+      editHref={editHref}
+      extra={
+        <Badge variant={isPublished ? 'success' : 'muted'}>
+          {isPublished ? 'Publicado' : 'Borrador'}
+        </Badge>
+      }
+      isPublished={isPublished}
+      entityLabel="video"
+      busy={deleteMutation.isPending}
+      onTogglePublish={() => {
+        void adminApi.updateVideo(id!, { isPublished: !isPublished }).then(() => {
+          setForm((f) => ({ ...f, isPublished: !isPublished }));
+          queryClient.invalidateQueries({ queryKey: ['video', id] });
+        });
+      }}
+      onDelete={() => deleteMutation.mutate()}
+    />
+  ) : undefined;
+
+  if (!isNew && isView) {
+    return (
+      <div className="w-full space-y-6">
+        <PageHeader title={videoTitle} subtitle="Vista de detalle" action={headerActions} />
+
+        <DetailSection>
+          <div className="flex flex-col gap-6 sm:flex-row">
+            {preview?.thumbnailUrl ? (
+              <img
+                src={preview.thumbnailUrl}
+                alt=""
+                className="aspect-video w-full max-w-sm shrink-0 rounded-xl object-cover shadow-sm ring-1 ring-[var(--color-border)] sm:w-72"
+              />
+            ) : null}
+            <div className="min-w-0 flex-1 space-y-5">
+              <DetailFlags>
+                <Badge variant={isPublished ? 'success' : 'muted'}>
+                  {isPublished ? 'En la app' : 'Borrador'}
+                </Badge>
+              </DetailFlags>
+              <DetailGrid>
+                <DetailField label="Categoría">{categoryName}</DetailField>
+                <DetailField label="Duración">
+                  {preview?.durationSec ? formatDuration(preview.durationSec) : null}
+                </DetailField>
+                <DetailField label="Descripción" span={2}>
+                  {form.description ? (
+                    <p className="whitespace-pre-wrap text-theme-secondary">{form.description}</p>
+                  ) : null}
+                </DetailField>
+                <DetailField label="URL del video" span={2}>
+                  {form.videoUrl ? (
+                    <a
+                      href={form.videoUrl}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="font-medium text-gold-dim underline-offset-2 hover:underline dark:text-gold-light"
+                    >
+                      {form.videoUrl}
+                    </a>
+                  ) : null}
+                </DetailField>
+              </DetailGrid>
+            </div>
+          </div>
+        </DetailSection>
+
+        <Button type="button" variant="ghost" onClick={() => navigate('/videos')}>
+          Volver al listado
+        </Button>
+      </div>
+    );
+  }
 
   return (
     <div className="w-full space-y-6">
       <PageHeader
         title={isNew ? 'Nuevo video' : 'Editar video'}
-        action={!isNew ? (
-          <Badge variant={form.isPublished ? 'success' : 'muted'}>
-            {form.isPublished ? 'Publicado' : 'Borrador'}
-          </Badge>
-        ) : undefined}
+        subtitle={!isNew ? videoTitle : undefined}
+        action={headerActions}
       />
       <div className="glass-card w-full space-y-4 p-8">
         <Input label="Título" value={form.title} onChange={(e) => setForm({ ...form, title: e.target.value })} />
@@ -243,14 +330,6 @@ export function VideoFormPage() {
         <div className="flex gap-2">
           <Button type="button" onClick={save}>Guardar</Button>
           <Button type="button" variant="ghost" onClick={() => navigate('/videos')}>Volver</Button>
-          {!isNew ? (
-            <Button type="button" variant="danger" onClick={async () => {
-              if (confirm('¿Eliminar video?')) {
-                await adminApi.deleteVideo(id!);
-                navigate('/videos');
-              }
-            }}>Eliminar</Button>
-          ) : null}
         </div>
       </div>
     </div>

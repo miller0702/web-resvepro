@@ -9,6 +9,8 @@ import { PageHeader } from '../../components/ui/PageHeader';
 import { Input } from '../../components/ui/Input';
 import { Button } from '../../components/ui/Button';
 import { Loading } from '../../components/ui/Loading';
+import { ResourceModeHeaderAction, useResourceMode } from '../../hooks/useResourceMode';
+import { DetailField, DetailGrid, DetailSection } from '../../components/ui/DetailView';
 
 const schema = z.object({
   name: z.string().min(1, 'Nombre requerido'),
@@ -18,11 +20,18 @@ const schema = z.object({
 
 type FormData = z.infer<typeof schema>;
 
+const KIND_LABELS: Record<FormData['kind'], string> = {
+  BOOK: 'Libros',
+  PODCAST: 'Podcasts',
+  VIDEO: 'Videos',
+};
+
 export function CategoryFormPage() {
   const { id } = useParams();
   const isEdit = Boolean(id);
   const navigate = useNavigate();
   const queryClient = useQueryClient();
+  const { isView, editHref } = useResourceMode();
 
   const categoryQuery = useQuery({
     queryKey: ['category', id],
@@ -64,10 +73,56 @@ export function CategoryFormPage() {
 
   if (isEdit && categoryQuery.isLoading) return <Loading />;
 
+  const category = categoryQuery.data;
+  const categoryName = String(category?.name ?? 'Categoría');
+  const kind = category?.kind as FormData['kind'] | undefined;
+
+  const headerActions = isEdit ? (
+    <ResourceModeHeaderAction
+      isView={isView}
+      editHref={editHref}
+      entityLabel="categoría"
+      busy={deleteMutation.isPending}
+      onDelete={() => deleteMutation.mutate()}
+    />
+  ) : undefined;
+
+  if (isEdit && isView) {
+    return (
+      <div className="w-full space-y-6">
+        <PageHeader title={categoryName} subtitle="Vista de detalle" action={headerActions} />
+
+        <DetailSection>
+          <DetailGrid>
+            <DetailField label="Nombre">{category?.name ? String(category.name) : null}</DetailField>
+            <DetailField label="Tipo de contenido">
+              {kind ? KIND_LABELS[kind] : null}
+            </DetailField>
+            <DetailField label="Orden">
+              {category?.sortOrder !== undefined && category?.sortOrder !== null
+                ? String(category.sortOrder)
+                : null}
+            </DetailField>
+          </DetailGrid>
+        </DetailSection>
+
+        <Button type="button" variant="ghost" onClick={() => navigate('/categories')}>
+          Volver al listado
+        </Button>
+      </div>
+    );
+  }
+
   return (
     <div className="w-full">
-      <PageHeader title={isEdit ? 'Editar categoría' : 'Nueva categoría'} />
-      <form onSubmit={handleSubmit((d) => saveMutation.mutate(d))} className="glass-card w-full space-y-5 p-8">
+      <PageHeader
+        title={isEdit ? 'Editar categoría' : 'Nueva categoría'}
+        action={headerActions}
+      />
+      <form
+        onSubmit={handleSubmit((d) => saveMutation.mutate(d))}
+        className="glass-card w-full space-y-5 p-8"
+      >
         <Input label="Nombre" error={errors.name?.message} {...register('name')} />
         <div className="space-y-1.5">
           <label className="block text-sm font-medium text-theme-secondary">Tipo de contenido</label>
@@ -81,11 +136,6 @@ export function CategoryFormPage() {
         <div className="flex gap-3">
           <Button type="submit" disabled={isSubmitting}>Guardar</Button>
           <Button type="button" variant="ghost" onClick={() => navigate('/categories')}>Cancelar</Button>
-          {isEdit ? (
-            <Button type="button" variant="danger" onClick={() => {
-              if (confirm('¿Eliminar categoría?')) deleteMutation.mutate();
-            }}>Eliminar</Button>
-          ) : null}
         </div>
       </form>
     </div>

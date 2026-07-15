@@ -9,7 +9,8 @@ import { PageHeader } from '../../components/ui/PageHeader';
 import { Input } from '../../components/ui/Input';
 import { Button } from '../../components/ui/Button';
 import { Loading } from '../../components/ui/Loading';
-import { APP_ICON_GROUPS, APP_SECTION_LABELS, getIconPreview } from '../../lib/app-icons';
+import { IconPicker } from '../../components/ui/IconPicker';
+import { APP_SECTION_LABELS } from '../../lib/app-icons';
 
 const schema = z.object({
   tabTitle: z.string().min(1, 'Título de pestaña requerido'),
@@ -27,44 +28,6 @@ const schema = z.object({
 });
 
 type FormData = z.infer<typeof schema>;
-
-function IconSelect({
-  value,
-  onChange,
-  label,
-}: {
-  value: string;
-  onChange: (v: string) => void;
-  label: string;
-}) {
-  const Preview = getIconPreview(value);
-
-  return (
-    <div className="space-y-2">
-      <label className="block text-sm font-medium text-theme-secondary">{label}</label>
-      <div className="flex items-center gap-3">
-        <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-gold/15 text-gold-dim dark:text-gold-light">
-          <Preview className="h-5 w-5" strokeWidth={1.75} />
-        </div>
-        <select
-          value={value}
-          onChange={(e) => onChange(e.target.value)}
-          className="input-field flex-1"
-        >
-          {APP_ICON_GROUPS.map((group) => (
-            <optgroup key={group.label} label={group.label}>
-              {group.icons.map((icon) => (
-                <option key={icon.value} value={icon.value}>
-                  {icon.label}
-                </option>
-              ))}
-            </optgroup>
-          ))}
-        </select>
-      </div>
-    </div>
-  );
-}
 
 export function AppSectionEditPage() {
   const { code } = useParams<{ code: string }>();
@@ -149,7 +112,7 @@ export function AppSectionEditPage() {
           name="icon"
           control={control}
           render={({ field }) => (
-            <IconSelect label="Icono (inactivo)" value={field.value} onChange={field.onChange} />
+            <IconPicker label="Icono (inactivo)" value={field.value} onChange={field.onChange} />
           )}
         />
 
@@ -157,7 +120,7 @@ export function AppSectionEditPage() {
           name="iconActive"
           control={control}
           render={({ field }) => (
-            <IconSelect label="Icono (activo)" value={field.value} onChange={field.onChange} />
+            <IconPicker label="Icono (activo)" value={field.value} onChange={field.onChange} />
           )}
         />
 
@@ -165,7 +128,11 @@ export function AppSectionEditPage() {
           name="emptyIcon"
           control={control}
           render={({ field }) => (
-            <IconSelect label="Icono estado vacío" value={field.value || 'empty-library'} onChange={field.onChange} />
+            <IconPicker
+              label="Icono estado vacío"
+              value={field.value || 'empty-library'}
+              onChange={field.onChange}
+            />
           )}
         />
 

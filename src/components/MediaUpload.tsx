@@ -7,6 +7,7 @@ interface MediaUploadProps {
   accept?: string;
   mediaType?: string;
   currentFilename?: string | null;
+  disabled?: boolean;
   onUploaded: (asset: { id: string; url: string; filename: string; mimeType: string }) => void;
 }
 
@@ -15,6 +16,7 @@ export function MediaUpload({
   accept,
   mediaType,
   currentFilename,
+  disabled = false,
   onUploaded,
 }: MediaUploadProps) {
   const inputRef = useRef<HTMLInputElement>(null);
@@ -39,27 +41,33 @@ export function MediaUpload({
       <label className="block text-sm font-medium text-theme-secondary">{label}</label>
       {currentFilename ? (
         <p className="text-sm text-theme-muted truncate">Archivo: {currentFilename}</p>
+      ) : (
+        disabled ? <p className="text-sm text-theme-muted">Sin archivo</p> : null
+      )}
+      {!disabled ? (
+        <>
+          <input
+            ref={inputRef}
+            type="file"
+            accept={accept}
+            className="hidden"
+            onChange={(e) => {
+              const file = e.target.files?.[0];
+              if (file) void handleFile(file);
+              e.target.value = '';
+            }}
+          />
+          <Button
+            type="button"
+            variant="secondary"
+            size="sm"
+            disabled={uploading}
+            onClick={() => inputRef.current?.click()}
+          >
+            {uploading ? 'Subiendo...' : currentFilename ? 'Reemplazar archivo' : 'Subir archivo'}
+          </Button>
+        </>
       ) : null}
-      <input
-        ref={inputRef}
-        type="file"
-        accept={accept}
-        className="hidden"
-        onChange={(e) => {
-          const file = e.target.files?.[0];
-          if (file) void handleFile(file);
-          e.target.value = '';
-        }}
-      />
-      <Button
-        type="button"
-        variant="secondary"
-        size="sm"
-        disabled={uploading}
-        onClick={() => inputRef.current?.click()}
-      >
-        {uploading ? 'Subiendo...' : currentFilename ? 'Reemplazar archivo' : 'Subir archivo'}
-      </Button>
       {error ? <p className="text-sm text-ember">{error}</p> : null}
     </div>
   );

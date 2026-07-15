@@ -1,7 +1,6 @@
 import { useEffect, type ReactNode } from 'react';
 import { useEditor, EditorContent, type Editor } from '@tiptap/react';
 import StarterKit from '@tiptap/starter-kit';
-import Link from '@tiptap/extension-link';
 import Placeholder from '@tiptap/extension-placeholder';
 import {
   Bold,
@@ -20,6 +19,8 @@ import {
 type ChapterEditorProps = {
   value: string;
   onChange: (html: string) => void;
+  /** Solo lectura: muestra el HTML sin toolbar ni edición. */
+  readOnly?: boolean;
 };
 
 function ToolbarButton({
@@ -145,21 +146,23 @@ function EditorToolbar({ editor }: { editor: Editor | null }) {
   );
 }
 
-export function ChapterEditor({ value, onChange }: ChapterEditorProps) {
+export function ChapterEditor({ value, onChange, readOnly = false }: ChapterEditorProps) {
   const editor = useEditor({
     extensions: [
       StarterKit.configure({
         heading: { levels: [2, 3] },
-      }),
-      Link.configure({
-        openOnClick: false,
-        HTMLAttributes: { rel: 'noopener noreferrer', target: '_blank' },
+        // TipTap v3 ya incluye Link en StarterKit; configurar aquí evita el warning de duplicado.
+        link: {
+          openOnClick: false,
+          HTMLAttributes: { rel: 'noopener noreferrer', target: '_blank' },
+        },
       }),
       Placeholder.configure({
         placeholder: 'Escribe el contenido del capítulo…',
       }),
     ],
     content: value || '<p></p>',
+    editable: !readOnly,
     onUpdate: ({ editor: ed }) => {
       onChange(ed.getHTML());
     },
@@ -172,12 +175,27 @@ export function ChapterEditor({ value, onChange }: ChapterEditorProps) {
 
   useEffect(() => {
     if (!editor) return;
+    editor.setEditable(!readOnly);
+  }, [editor, readOnly]);
+
+  useEffect(() => {
+    if (!editor) return;
     const current = editor.getHTML();
     const next = value || '<p></p>';
     if (current !== next) {
       editor.commands.setContent(next, { emitUpdate: false });
     }
   }, [editor, value]);
+
+  if (readOnly) {
+    return (
+      <div
+        className="chapter-editor-content rounded-xl border px-4 py-3 text-theme"
+        style={{ borderColor: 'var(--color-border)', background: 'var(--color-surface-muted)' }}
+        dangerouslySetInnerHTML={{ __html: value || '<p class="text-theme-muted">Sin contenido</p>' }}
+      />
+    );
+  }
 
   return (
     <div className="chapter-editor">

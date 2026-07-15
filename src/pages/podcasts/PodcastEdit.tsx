@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { adminApi } from '../../api/admin';
 import { mediaApi } from '../../api/media';
 import { PageHeader } from '../../components/ui/PageHeader';
@@ -9,12 +9,16 @@ import { Input } from '../../components/ui/Input';
 import { MediaUpload } from '../../components/MediaUpload';
 import { Badge } from '../../components/ui/Badge';
 import { Loading } from '../../components/ui/Loading';
+import { alertDialog } from '../../lib/dialog';
+import { ResourceModeHeaderAction, useResourceMode } from '../../hooks/useResourceMode';
+import { DetailField, DetailFlags, DetailGrid, DetailSection } from '../../components/ui/DetailView';
 
 export function PodcastEditPage() {
   const { id } = useParams();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const isNew = id === 'new';
+  const { isView, editHref } = useResourceMode();
 
   const [form, setForm] = useState({
     title: '',
@@ -41,12 +45,14 @@ export function PodcastEditPage() {
   const authorsQuery = useQuery({
     queryKey: ['authors'],
     queryFn: async () => (await adminApi.getAuthors()).data.data as Array<{ id: string; name: string }>,
+    enabled: isNew || !isView,
   });
 
   const categoriesQuery = useQuery({
     queryKey: ['categories', 'PODCAST'],
     queryFn: async () =>
       (await adminApi.getCategories('PODCAST')).data.data as Array<{ id: string; name: string }>,
+    enabled: isNew || !isView,
   });
 
   useEffect(() => {
@@ -63,6 +69,11 @@ export function PodcastEditPage() {
       setEpisodeForm((f) => ({ ...f, order: eps.length + 1 }));
     }
   }, [podcastQuery.data]);
+
+  const deleteMutation = useMutation({
+    mutationFn: () => adminApi.deletePodcast(id!),
+    onSuccess: () => navigate('/podcasts'),
+  });
 
   const saveSeries = async () => {
     const payload = {
@@ -87,7 +98,7 @@ export function PodcastEditPage() {
 
   const createEpisode = async (audioId: string) => {
     if (!episodeForm.title.trim()) {
-      alert('Indica un título para el episodio');
+      void alertDialog({ title: 'Falta título', message: 'Indica un título para el episodio.', tone: 'warning' });
       return;
     }
     setSavingEpisode(true);
@@ -104,7 +115,11 @@ export function PodcastEditPage() {
   const saveEpisodeFromUrl = async () => {
     const url = audioUrl.trim();
     if (!url) {
-      alert('Indica la URL del archivo de audio (MP3, M4A, etc.)');
+      void alertDialog({
+        title: 'Falta URL',
+        message: 'Indica la URL del archivo de audio (MP3, M4A, etc.).',
+        tone: 'warning',
+      });
       return;
     }
     setSavingEpisode(true);
@@ -117,7 +132,11 @@ export function PodcastEditPage() {
       });
       await createEpisode(ext.data.data.id);
     } catch {
-      alert('No se pudo registrar la URL de audio. Verifica que sea pública y accesible.');
+      void alertDialog({
+        title: 'Error de audio',
+        message: 'No se pudo registrar la URL de audio. Verifica que sea pública y accesible.',
+        tone: 'warning',
+      });
     } finally {
       setSavingEpisode(false);
     }
@@ -125,17 +144,103 @@ export function PodcastEditPage() {
 
   if (!isNew && podcastQuery.isLoading) return <Loading />;
 
-  const episodes = (podcastQuery.data as { episodes?: Array<Record<string, unknown>> } | undefined)?.episodes ?? [];
+  const podcast = podcastQuery.data as Record<string, unknown> | undefined;
+  const episodes = (podcast?.episodes as Array<Record<string, unknown>> | undefined) ?? [];
+  const isPublished = form.isPublished;
+  const podcastTitle = form.title || 'Podcast';
+
+  const authorName =
+    (podcast?.author as { name?: string } | null)?.name
+    ?? (authorsQuery.data ?? []).find((a) => a.id === form.authorId)?.name;
+  const categoryName =
+    (podcast?.category as { name?: string } | null)?.name
+    ?? (categoriesQuery.data ?? []).find((c) => c.id === form.categoryId)?.name;
+
+  const headerActions = !isNew ? (
+    <ResourceModeHeaderAction
+      isView={isView}
+      editHref={editHref}
+      extra={
+        <Badge variant={isPublished ? 'success' : 'muted'}>
+          {isPublished ? 'Publicado' : 'Borrador'}
+        </Badge>
+      }
+      isPublished={isPublished}
+      entityLabel="podcast"
+      busy={deleteMutation.isPending}
+      onTogglePublish={() => {
+        void adminApi.updatePodcast(id!, { isPublished: !isPublished }).then(() => {
+          setForm((f) => ({ ...f, isPublished: !isPublished }));
+          queryClient.invalidateQueries({ queryKey: ['podcast', id] });
+        });
+      }}
+      onDelete={() => deleteMutation.mutate()}
+    />
+  ) : undefined;
+
+  if (!isNew && isView) {
+    return (
+      <div className="w-full space-y-6">
+        <PageHeader title={podcastTitle} subtitle="Vista de detalle" action={headerActions} />
+
+        <DetailSection title="Serie">
+          <div className="space-y-5">
+            <DetailFlags>
+              <Badge variant={isPublished ? 'success' : 'muted'}>
+                {isPublished ? 'En la app' : 'Borrador'}
+              </Badge>
+            </DetailFlags>
+            <DetailGrid>
+              <DetailField label="Autor">{authorName}</DetailField>
+              <DetailField label="Categoría">{categoryName}</DetailField>
+              <DetailField label="Descripción" span={2}>
+                {form.description ? (
+                  <p className="whitespace-pre-wrap text-theme-secondary">{form.description}</p>
+                ) : null}
+              </DetailField>
+            </DetailGrid>
+          </div>
+        </DetailSection>
+
+        <DetailSection title={`Episodios (${episodes.length})`}>
+          {episodes.length === 0 ? (
+            <p className="text-sm text-theme-muted">Este podcast aún no tiene episodios.</p>
+          ) : (
+            <ul className="divide-y divide-[var(--color-border)]">
+              {episodes.map((ep) => (
+                <li key={String(ep.id)} className="flex items-center justify-between gap-4 py-3">
+                  <div>
+                    <p className="font-medium text-theme">
+                      {String(ep.order)}. {String(ep.title)}
+                    </p>
+                    {ep.description ? (
+                      <p className="mt-0.5 text-sm text-theme-muted">{String(ep.description)}</p>
+                    ) : null}
+                  </div>
+                  {ep.isPublished !== false ? (
+                    <Badge variant="success">Publicado</Badge>
+                  ) : (
+                    <Badge variant="muted">Borrador</Badge>
+                  )}
+                </li>
+              ))}
+            </ul>
+          )}
+        </DetailSection>
+
+        <Button type="button" variant="ghost" onClick={() => navigate('/podcasts')}>
+          Volver al listado
+        </Button>
+      </div>
+    );
+  }
 
   return (
     <div className="w-full space-y-8">
       <PageHeader
         title={isNew ? 'Nuevo podcast' : 'Editar podcast'}
-        action={!isNew ? (
-          <Badge variant={form.isPublished ? 'success' : 'muted'}>
-            {form.isPublished ? 'Publicado' : 'Borrador'}
-          </Badge>
-        ) : undefined}
+        subtitle={!isNew ? podcastTitle : undefined}
+        action={headerActions}
       />
 
       {isNew ? (
@@ -189,14 +294,6 @@ export function PodcastEditPage() {
         <div className="flex gap-2">
           <Button type="button" onClick={saveSeries}>Guardar serie</Button>
           <Button type="button" variant="ghost" onClick={() => navigate('/podcasts')}>Volver</Button>
-          {!isNew ? (
-            <Button type="button" variant="danger" onClick={async () => {
-              if (confirm('¿Eliminar podcast?')) {
-                await adminApi.deletePodcast(id!);
-                navigate('/podcasts');
-              }
-            }}>Eliminar</Button>
-          ) : null}
         </div>
       </div>
 

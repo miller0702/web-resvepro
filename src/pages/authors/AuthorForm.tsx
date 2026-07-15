@@ -9,6 +9,8 @@ import { PageHeader } from '../../components/ui/PageHeader';
 import { Input } from '../../components/ui/Input';
 import { Button } from '../../components/ui/Button';
 import { Loading } from '../../components/ui/Loading';
+import { ResourceModeHeaderAction, useResourceMode } from '../../hooks/useResourceMode';
+import { DetailField, DetailGrid, DetailSection } from '../../components/ui/DetailView';
 
 const schema = z.object({
   name: z.string().min(1, 'Nombre requerido'),
@@ -22,6 +24,7 @@ export function AuthorFormPage() {
   const isEdit = Boolean(id);
   const navigate = useNavigate();
   const queryClient = useQueryClient();
+  const { isView, editHref } = useResourceMode();
 
   const authorQuery = useQuery({
     queryKey: ['author', id],
@@ -64,9 +67,49 @@ export function AuthorFormPage() {
 
   if (isEdit && authorQuery.isLoading) return <Loading />;
 
+  const author = authorQuery.data;
+  const authorName = String(author?.name ?? 'Autor');
+
+  const headerActions = isEdit ? (
+    <ResourceModeHeaderAction
+      isView={isView}
+      editHref={editHref}
+      entityLabel="autor"
+      busy={deleteMutation.isPending}
+      onDelete={() => deleteMutation.mutate()}
+    />
+  ) : undefined;
+
+  if (isEdit && isView) {
+    return (
+      <div className="w-full space-y-6">
+        <PageHeader title={authorName} subtitle="Vista de detalle" action={headerActions} />
+
+        <DetailSection>
+          <DetailGrid>
+            <DetailField label="Nombre">{author?.name ? String(author.name) : null}</DetailField>
+            <DetailField label="Biografía" span={2}>
+              {author?.bio ? (
+                <p className="whitespace-pre-wrap text-theme-secondary">{String(author.bio)}</p>
+              ) : null}
+            </DetailField>
+          </DetailGrid>
+        </DetailSection>
+
+        <Button type="button" variant="ghost" onClick={() => navigate('/authors')}>
+          Volver al listado
+        </Button>
+      </div>
+    );
+  }
+
   return (
     <div className="w-full">
-      <PageHeader title={isEdit ? 'Editar autor' : 'Nuevo autor'} subtitle="Autores de libros y podcasts" />
+      <PageHeader
+        title={isEdit ? 'Editar autor' : 'Nuevo autor'}
+        subtitle="Autores de libros y podcasts"
+        action={headerActions}
+      />
       <form
         onSubmit={handleSubmit((d) => saveMutation.mutate(d))}
         className="glass-card w-full space-y-5 p-8"
@@ -83,17 +126,6 @@ export function AuthorFormPage() {
           <Button type="button" variant="ghost" onClick={() => navigate('/authors')}>
             Cancelar
           </Button>
-          {isEdit ? (
-            <Button
-              type="button"
-              variant="danger"
-              onClick={() => {
-                if (confirm('¿Eliminar este autor permanentemente?')) deleteMutation.mutate();
-              }}
-            >
-              Eliminar
-            </Button>
-          ) : null}
         </div>
       </form>
     </div>

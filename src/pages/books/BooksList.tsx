@@ -1,13 +1,17 @@
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
+import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { adminApi } from '../../api/admin';
 import { ResourceListPage } from '../../components/list/ResourceListPage';
+import { publishableRowActions } from '../../components/list/rowActionHelpers';
 import { Button } from '../../components/ui/Button';
 import { Badge } from '../../components/ui/Badge';
+import { RowActions } from '../../components/ui/RowActions';
 import { usePaginatedList } from '../../hooks/usePaginatedList';
 import { useCategoryFilterOptions, useCollectionFilterOptions } from '../../hooks/useListFilters';
 
 export function BooksListPage() {
+  const queryClient = useQueryClient();
   const [search, setSearch] = useState('');
   const [categoryId, setCategoryId] = useState<string | undefined>();
   const [collectionId, setCollectionId] = useState<string | undefined>();
@@ -30,15 +34,28 @@ export function BooksListPage() {
     },
   });
 
+  const publishMutation = useMutation({
+    mutationFn: ({ id, isPublished }: { id: string; isPublished: boolean }) =>
+      adminApi.updateBook(id, { isPublished }),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['admin-books'] }),
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: (id: string) => adminApi.deleteBook(id),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['admin-books'] }),
+  });
+
   const handleFilterChange = (key: string, value: string) => {
     if (key === 'categoryId') setCategoryId(value || undefined);
     if (key === 'collectionId') setCollectionId(value || undefined);
   };
 
+  const busy = publishMutation.isPending || deleteMutation.isPending;
+
   return (
     <ResourceListPage
       title="Libros"
-      subtitle="Catálogo editorial de la plataforma"
+      subtitle="Catálogo editorial. Quitar de la app = pasar a borrador (los lectores dejan de verlo)."
       action={
         <Link to="/books/new">
           <Button>+ Nuevo libro</Button>
@@ -81,18 +98,30 @@ export function BooksListPage() {
           label: 'Estado',
           render: (row) => (
             <Badge variant={row.isPublished ? 'success' : 'muted'}>
-              {row.isPublished ? 'Publicado' : 'Borrador'}
+              {row.isPublished ? 'En la app' : 'Fuera de la app'}
             </Badge>
           ),
         },
         {
-          key: 'id',
-          label: '',
-          render: (row) => (
-            <Link to={`/books/${row.id}`} className="font-medium text-gold-dim hover:text-gold">
-              Editar →
-            </Link>
-          ),
+          key: 'actions',
+          label: 'Acciones',
+          render: (row) => {
+            const id = String(row.id);
+            const published = Boolean(row.isPublished);
+            return (
+              <RowActions
+                actions={publishableRowActions({
+                  editPath: `/books/${id}`,
+                  isPublished: published,
+                  busy,
+                  entityLabel: 'libro',
+                  onTogglePublish: () =>
+                    publishMutation.mutate({ id, isPublished: !published }),
+                  onDelete: () => deleteMutation.mutate(id),
+                })}
+              />
+            );
+          },
         },
       ]}
     />

@@ -12,6 +12,15 @@ import { MediaUpload } from '../../components/MediaUpload';
 import { ChapterEditor, chapterContentPreview } from '../../components/books/ChapterEditor';
 import { Loading } from '../../components/ui/Loading';
 import { Badge } from '../../components/ui/Badge';
+import { alertDialog, confirmDialog } from '../../lib/dialog';
+import { ResourceModeHeaderAction, useResourceMode } from '../../hooks/useResourceMode';
+import {
+  DetailAsset,
+  DetailField,
+  DetailFlags,
+  DetailGrid,
+  DetailSection,
+} from '../../components/ui/DetailView';
 
 const schema = z.object({
   title: z.string().min(1, 'Título requerido'),
@@ -35,6 +44,8 @@ export function BookEditPage() {
   const { id } = useParams();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
+  const { isView, editHref } = useResourceMode();
+  const [viewingChapterId, setViewingChapterId] = useState<string | null>(null);
 
   const bookQuery = useQuery({
     queryKey: ['book', id],
@@ -134,28 +145,168 @@ export function BookEditPage() {
     const title = chapterForm.title.trim();
     const hasBody = chapterForm.content.replace(/<[^>]+>/g, '').trim().length > 0;
     if (!title || !hasBody) return;
-    if (editingChapter) {
-      await adminApi.updateChapter(editingChapter.id, chapterForm);
-    } else {
-      await adminApi.addChapter(id!, chapterForm);
+    try {
+      if (editingChapter) {
+        await adminApi.updateChapter(editingChapter.id, chapterForm);
+      } else {
+        await adminApi.addChapter(id!, chapterForm);
+      }
+      setChapterForm({ title: '', order: (bookQuery.data?.chapters?.length ?? 0) + 2, content: '' });
+      setEditingChapter(null);
+      await queryClient.invalidateQueries({ queryKey: ['book', id] });
+    } catch (err: unknown) {
+      const message =
+        (err as { response?: { data?: { message?: string | string[] } } })?.response?.data?.message;
+      const text = Array.isArray(message) ? message.join(', ') : message;
+      await alertDialog({
+        title: 'No se pudo guardar',
+        message: text || 'No se pudo guardar el capítulo. Revisa el orden o el contenido.',
+        tone: 'warning',
+      });
     }
-    setChapterForm({ title: '', order: (bookQuery.data?.chapters?.length ?? 0) + 1, content: '' });
-    setEditingChapter(null);
-    queryClient.invalidateQueries({ queryKey: ['book', id] });
   };
 
   if (bookQuery.isLoading) return <Loading />;
 
-  const chapters = bookQuery.data?.chapters ?? [];
+  const book = bookQuery.data;
+  const chapters = book?.chapters ?? [];
+  const isPublished = Boolean(book?.isPublished);
+  const authorName = (book?.author as { name?: string } | null)?.name;
+  const categoryName = (book?.category as { name?: string } | null)?.name;
+  const coverUrl = book?.coverUrl ? String(book.coverUrl) : null;
+  const contentUrl = book?.contentUrl ? String(book.contentUrl) : null;
+  const audioUrl = book?.audioUrl ? String(book.audioUrl) : null;
+
+  const headerActions = (
+    <ResourceModeHeaderAction
+      isView={isView}
+      editHref={editHref}
+      extra={
+        <Badge variant={isPublished ? 'success' : 'muted'}>
+          {isPublished ? 'Publicado' : 'Borrador'}
+        </Badge>
+      }
+      isPublished={isPublished}
+      entityLabel="libro"
+      busy={deleteMutation.isPending || updateMutation.isPending}
+      onTogglePublish={() => {
+        void adminApi.updateBook(id!, { isPublished: !isPublished }).then(() => {
+          queryClient.invalidateQueries({ queryKey: ['book', id] });
+          queryClient.invalidateQueries({ queryKey: ['admin-books'] });
+        });
+      }}
+      onDelete={() => deleteMutation.mutate()}
+    />
+  );
+
+  if (isView) {
+    return (
+      <div className="w-full space-y-6">
+        <PageHeader
+          title={String(book?.title ?? 'Libro')}
+          subtitle="Vista de detalle"
+          action={headerActions}
+        />
+
+        <DetailSection>
+          <div className="flex flex-col gap-6 sm:flex-row">
+            {coverUrl ? (
+              <img
+                src={coverUrl}
+                alt=""
+                className="h-44 w-32 shrink-0 rounded-xl object-cover shadow-sm ring-1 ring-[var(--color-border)]"
+              />
+            ) : (
+              <div
+                className="flex h-44 w-32 shrink-0 items-center justify-center rounded-xl text-xs text-theme-muted surface-muted"
+                style={{ border: '1px solid var(--color-border)' }}
+              >
+                Sin portada
+              </div>
+            )}
+            <div className="min-w-0 flex-1 space-y-5">
+              <DetailFlags>
+                <Badge variant={isPublished ? 'success' : 'muted'}>
+                  {isPublished ? 'En la app' : 'Borrador'}
+                </Badge>
+                {book?.isAudiobook ? <Badge variant="panel">Audiolibro</Badge> : null}
+              </DetailFlags>
+              <DetailGrid>
+                <DetailField label="Autor">{authorName}</DetailField>
+                <DetailField label="Categoría">{categoryName}</DetailField>
+                <DetailField label="Resumen" span={2}>
+                  {book?.summary ? (
+                    <p className="whitespace-pre-wrap text-theme-secondary">{String(book.summary)}</p>
+                  ) : null}
+                </DetailField>
+              </DetailGrid>
+            </div>
+          </div>
+        </DetailSection>
+
+        <DetailSection title="Archivos">
+          <DetailGrid>
+            <DetailAsset label="Portada" name={coverName} href={coverUrl} />
+            <DetailAsset label="Documento (PDF/EPUB)" name={contentName} href={contentUrl} />
+            <DetailAsset label="Audio" name={audioName} href={audioUrl} />
+          </DetailGrid>
+        </DetailSection>
+
+        <DetailSection title={`Capítulos (${chapters.length})`}>
+          {chapters.length === 0 ? (
+            <p className="text-sm text-theme-muted">No hay capítulos todavía.</p>
+          ) : (
+            <ul className="divide-y divide-[var(--color-border)]">
+              {chapters.map((ch) => {
+                const open = viewingChapterId === ch.id;
+                return (
+                  <li key={ch.id} className="py-4">
+                    <button
+                      type="button"
+                      onClick={() => setViewingChapterId(open ? null : ch.id)}
+                      className="flex w-full items-start justify-between gap-4 text-left"
+                    >
+                      <div className="min-w-0">
+                        <p className="font-medium text-theme">
+                          {ch.order}. {ch.title}
+                        </p>
+                        {!open ? (
+                          <p className="mt-0.5 truncate text-sm text-theme-muted">
+                            {chapterContentPreview(ch.content, 120)}
+                          </p>
+                        ) : null}
+                      </div>
+                      <span className="shrink-0 text-sm font-medium text-gold-dim dark:text-gold-light">
+                        {open ? 'Ocultar' : 'Leer'}
+                      </span>
+                    </button>
+                    {open ? (
+                      <div className="mt-3">
+                        <ChapterEditor value={ch.content} onChange={() => undefined} readOnly />
+                      </div>
+                    ) : null}
+                  </li>
+                );
+              })}
+            </ul>
+          )}
+        </DetailSection>
+
+        <Button type="button" variant="ghost" onClick={() => navigate('/books')}>
+          Volver al listado
+        </Button>
+      </div>
+    );
+  }
 
   return (
     <div className="w-full space-y-8">
       <PageHeader
         title="Editar libro"
-        subtitle={String(bookQuery.data?.title ?? '')}
+        subtitle={String(book?.title ?? '')}
         action={
-          <Badge variant={bookQuery.data?.isPublished ? 'success' : 'muted'}>
-            {bookQuery.data?.isPublished ? 'Publicado' : 'Borrador'}
+          <Badge variant={isPublished ? 'success' : 'muted'}>
+            {isPublished ? 'Publicado' : 'Borrador'}
           </Badge>
         }
       />
@@ -203,15 +354,6 @@ export function BookEditPage() {
         <div className="flex gap-3 pt-2">
           <Button type="submit" disabled={isSubmitting}>Guardar metadatos</Button>
           <Button type="button" variant="ghost" onClick={() => navigate('/books')}>Volver</Button>
-          <Button
-            type="button"
-            variant="danger"
-            onClick={() => {
-              if (confirm('¿Eliminar este libro permanentemente?')) deleteMutation.mutate();
-            }}
-          >
-            Eliminar
-          </Button>
         </div>
       </form>
 
@@ -268,7 +410,7 @@ export function BookEditPage() {
             setAudioId(asset.id);
             setAudioName(asset.filename);
             await attachMedia('audio', asset.id);
-            if (!bookQuery.data?.isAudiobook) {
+            if (!book?.isAudiobook) {
               await adminApi.updateBook(id!, { isAudiobook: true });
               queryClient.invalidateQueries({ queryKey: ['book', id] });
             }
@@ -319,7 +461,7 @@ export function BookEditPage() {
             <li key={ch.id} className="flex items-center justify-between gap-4 py-3">
               <div>
                 <p className="font-medium text-theme">{ch.order}. {ch.title}</p>
-                <p className="text-xs text-theme-muted truncate max-w-md">
+                <p className="max-w-md truncate text-xs text-theme-muted">
                   {chapterContentPreview(ch.content)}
                 </p>
               </div>
@@ -339,11 +481,17 @@ export function BookEditPage() {
                   type="button"
                   size="sm"
                   variant="danger"
-                  onClick={async () => {
-                    if (confirm('¿Eliminar capítulo?')) {
+                  onClick={() => {
+                    void confirmDialog({
+                      title: 'Eliminar capítulo',
+                      message: `¿Eliminar el capítulo «${ch.title}»? Esta acción no se puede deshacer.`,
+                      confirmLabel: 'Eliminar',
+                      tone: 'danger',
+                    }).then(async (ok) => {
+                      if (!ok) return;
                       await adminApi.deleteChapter(ch.id);
                       queryClient.invalidateQueries({ queryKey: ['book', id] });
-                    }
+                    });
                   }}
                 >
                   Eliminar

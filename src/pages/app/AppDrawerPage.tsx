@@ -7,7 +7,8 @@ import { Button } from '../../components/ui/Button';
 import { Input } from '../../components/ui/Input';
 import { Loading } from '../../components/ui/Loading';
 import { Badge } from '../../components/ui/Badge';
-import { APP_ICON_GROUPS, getIconPreview } from '../../lib/app-icons';
+import { IconPicker } from '../../components/ui/IconPicker';
+import { getIconPreview } from '../../lib/app-icons';
 import { SortableList } from '../../components/sortable/SortableList';
 import { assignSortOrder } from '../../utils/reorder';
 
@@ -159,7 +160,7 @@ export function AppDrawerPage({ embedded = false }: { embedded?: boolean }) {
                     <div className="rounded-xl border p-4" style={{ borderColor: 'var(--color-border-subtle)' }}>
                       <div className="mb-4 flex items-center gap-3">
                         <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-gold/15 text-gold-dim dark:text-gold-light">
-                          <Icon className="h-5 w-5" strokeWidth={1.75} />
+                          <Icon className="h-5 w-5" />
                         </div>
                         <div>
                           <p className="font-mono text-xs text-theme-muted">{item.code}</p>
@@ -179,23 +180,12 @@ export function AppDrawerPage({ embedded = false }: { embedded?: boolean }) {
                           value={item.href}
                           onChange={(e) => updateItem(item.code, { href: e.target.value })}
                         />
-                        <div className="space-y-1.5">
-                          <label className="block text-sm font-medium text-theme-secondary">Icono</label>
-                          <select
+                        <div className="sm:col-span-2 xl:col-span-3">
+                          <IconPicker
+                            label="Icono"
                             value={item.icon}
-                            onChange={(e) => updateItem(item.code, { icon: e.target.value })}
-                            className="input-field"
-                          >
-                            {APP_ICON_GROUPS.map((iconGroup) => (
-                              <optgroup key={iconGroup.label} label={iconGroup.label}>
-                                {iconGroup.icons.map((icon) => (
-                                  <option key={icon.value} value={icon.value}>
-                                    {icon.label}
-                                  </option>
-                                ))}
-                              </optgroup>
-                            ))}
-                          </select>
+                            onChange={(icon) => updateItem(item.code, { icon })}
+                          />
                         </div>
                         <label className="flex cursor-pointer items-center gap-3 rounded-xl border px-4 py-3 surface-muted sm:col-span-2 xl:col-span-3" style={{ borderColor: 'var(--color-border)' }}>
                           <input

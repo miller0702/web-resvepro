@@ -1,20 +1,35 @@
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
-import { useQuery } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { adminApi } from '../../api/admin';
 import { ResourceListPage } from '../../components/list/ResourceListPage';
+import { publishableRowActions } from '../../components/list/rowActionHelpers';
 import { Button } from '../../components/ui/Button';
 import { Badge } from '../../components/ui/Badge';
+import { RowActions } from '../../components/ui/RowActions';
 import { useClientList } from '../../hooks/useClientList';
 import { PUBLISHED_FILTER } from '../../hooks/useListFilters';
 
 export function RadioListPage() {
+  const queryClient = useQueryClient();
   const [search, setSearch] = useState('');
   const [published, setPublished] = useState<string | undefined>();
 
   const { data, isLoading } = useQuery({
     queryKey: ['radio'],
-    queryFn: async () => (await adminApi.getRadioStations()).data.data as Array<Record<string, unknown>>,
+    queryFn: async () =>
+      (await adminApi.getRadioStations()).data.data as Array<Record<string, unknown>>,
+  });
+
+  const publishMutation = useMutation({
+    mutationFn: ({ id, isPublished }: { id: string; isPublished: boolean }) =>
+      adminApi.updateRadio(id, { isPublished }),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['radio'] }),
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: (id: string) => adminApi.deleteRadio(id),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['radio'] }),
   });
 
   const list = useClientList({
@@ -28,11 +43,17 @@ export function RadioListPage() {
     },
   });
 
+  const busy = publishMutation.isPending || deleteMutation.isPending;
+
   return (
     <ResourceListPage
       title="Radio"
       subtitle="Emisoras en vivo"
-      action={<Link to="/radio/new"><Button>+ Nueva emisora</Button></Link>}
+      action={
+        <Link to="/radio/new">
+          <Button>+ Nueva emisora</Button>
+        </Link>
+      }
       keyField="id"
       items={list.items}
       isLoading={isLoading}
@@ -60,16 +81,30 @@ export function RadioListPage() {
           label: 'Estado',
           render: (row) => (
             <Badge variant={row.isPublished ? 'success' : 'muted'}>
-              {row.isPublished ? 'Publicado' : 'Borrador'}
+              {row.isPublished ? 'En la app' : 'Fuera de la app'}
             </Badge>
           ),
         },
         {
-          key: 'id',
-          label: '',
-          render: (row) => (
-            <Link to={`/radio/${row.id}`} className="font-medium text-gold-dim hover:text-gold">Editar →</Link>
-          ),
+          key: 'actions',
+          label: 'Acciones',
+          render: (row) => {
+            const id = String(row.id);
+            const isPublished = Boolean(row.isPublished);
+            return (
+              <RowActions
+                actions={publishableRowActions({
+                  editPath: `/radio/${id}`,
+                  isPublished,
+                  busy,
+                  entityLabel: 'emisora',
+                  onTogglePublish: () =>
+                    publishMutation.mutate({ id, isPublished: !isPublished }),
+                  onDelete: () => deleteMutation.mutate(id),
+                })}
+              />
+            );
+          },
         },
       ]}
     />

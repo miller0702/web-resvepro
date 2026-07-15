@@ -1,13 +1,28 @@
 import { useMemo, useState } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Shield, Smartphone, UserPlus, VenetianMask } from 'lucide-react';
+import {
+  Ban,
+  Eye,
+  MessageSquareOff,
+  MessageSquare,
+  Pencil,
+  Shield,
+  Smartphone,
+  Trash2,
+  UserCheck,
+  UserPlus,
+  VenetianMask,
+} from 'lucide-react';
 import { adminApi } from '../api/admin';
 import { ResourceListPage } from '../components/list/ResourceListPage';
 import { Badge } from '../components/ui/Badge';
 import { Button } from '../components/ui/Button';
+import { RowActions } from '../components/ui/RowActions';
 import { useClientList } from '../hooks/useClientList';
-import { getRoleMeta, isAppReader, isPanelUser, isSuperAdmin } from '../lib/rbac';
+import { resourceEditPath, resourceViewPath } from '../hooks/useResourceMode';
+import { getRoleMeta, isSuperAdmin } from '../lib/rbac';
+import { confirmDialog } from '../lib/dialog';
 import { getUser, saveAuth, saveImpersonatorSession } from '../lib/auth';
 
 type UserRow = Record<string, unknown> & {
@@ -16,6 +31,7 @@ type UserRow = Record<string, unknown> & {
   firstName?: string;
   lastName?: string;
   isActive?: boolean;
+  canPost?: boolean;
   roles?: string[];
 };
 
@@ -51,6 +67,10 @@ function RoleBadges({ roles = [] }: { roles?: string[] }) {
   );
 }
 
+function confirmAction(message: string, title = 'Confirmar acción', tone: 'danger' | 'warning' = 'danger') {
+  return confirmDialog({ title, message, confirmLabel: 'Confirmar', tone });
+}
+
 export function UsersPage() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
@@ -60,13 +80,26 @@ export function UsersPage() {
   const [search, setSearch] = useState('');
   const currentUser = getUser();
 
-  const { data, isLoading } = useQuery({
-    queryKey: ['users'],
+  const { data: panelUsers, isLoading: panelLoading } = useQuery({
+    queryKey: ['users', 'panel'],
     queryFn: async () => {
-      const res = await adminApi.getUsers({ page: 1, limit: 200 });
+      const res = await adminApi.getUsers({ page: 1, limit: 100, context: 'panel' });
       return res.data.data as UserRow[];
     },
   });
+
+  const { data: appUsers, isLoading: appLoading } = useQuery({
+    queryKey: ['users', 'app'],
+    queryFn: async () => {
+      const res = await adminApi.getUsers({ page: 1, limit: 100, context: 'app' });
+      return res.data.data as UserRow[];
+    },
+  });
+
+  const data = tab === 'panel' ? panelUsers : appUsers;
+  const isLoading = tab === 'panel' ? panelLoading : appLoading;
+
+  const invalidateUsers = () => queryClient.invalidateQueries({ queryKey: ['users'] });
 
   const impersonateMutation = useMutation({
     mutationFn: (userId: string) => adminApi.impersonateUser(userId),
@@ -74,15 +107,23 @@ export function UsersPage() {
       saveImpersonatorSession();
       const { accessToken, refreshToken, user } = res.data.data;
       saveAuth({ accessToken, refreshToken }, user);
-      queryClient.invalidateQueries({ queryKey: ['users'] });
+      invalidateUsers();
       navigate('/');
     },
   });
 
-  const tabItems = useMemo(() => {
-    const all = data ?? [];
-    return all.filter((u) => (tab === 'panel' ? isPanelUser(u.roles) : isAppReader(u.roles)));
-  }, [data, tab]);
+  const updateMutation = useMutation({
+    mutationFn: ({ id, data }: { id: string; data: { isActive?: boolean; canPost?: boolean } }) =>
+      adminApi.updateUser(id, data),
+    onSuccess: () => invalidateUsers(),
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: (id: string) => adminApi.deleteUserAccount(id),
+    onSuccess: () => invalidateUsers(),
+  });
+
+  const tabItems = useMemo(() => data ?? [], [data]);
 
   const list = useClientList({
     items: tabItems as Record<string, unknown>[],
@@ -93,6 +134,8 @@ export function UsersPage() {
   const activeTab = tabs.find((t) => t.id === tab)!;
   const ActiveIcon = activeTab.icon;
   const canManage = isSuperAdmin(currentUser?.roles) || currentUser?.roles?.includes('ADMIN_GENERAL');
+  const pending =
+    updateMutation.isPending || deleteMutation.isPending || impersonateMutation.isPending;
 
   const switchTab = (next: UserTab) => {
     setTab(next);
@@ -104,9 +147,8 @@ export function UsersPage() {
       <div className="mb-6 grid grid-cols-1 gap-4 sm:grid-cols-2">
         {tabs.map((item) => {
           const Icon = item.icon;
-          const count = (data ?? []).filter((u) =>
-            item.id === 'panel' ? isPanelUser(u.roles) : isAppReader(u.roles),
-          ).length;
+          const count =
+            item.id === 'panel' ? (panelUsers?.length ?? 0) : (appUsers?.length ?? 0);
           const active = tab === item.id;
           return (
             <button
@@ -139,9 +181,18 @@ export function UsersPage() {
           );
         })}
       </div>
-      <div className="mb-4 flex items-center gap-2 text-sm text-theme-secondary">
+      <div className="mb-4 flex flex-wrap items-center gap-2 text-sm text-theme-secondary">
         <ActiveIcon className="h-4 w-4" strokeWidth={1.75} />
         <span>{activeTab.description}</span>
+        {tab === 'panel' ? (
+          <button
+            type="button"
+            onClick={() => switchTab('app')}
+            className="font-medium text-gold-dim hover:text-gold dark:text-gold-light"
+          >
+            Ver lectores de la app →
+          </button>
+        ) : null}
       </div>
     </>
   );
@@ -170,7 +221,11 @@ export function UsersPage() {
       meta={list.meta}
       page={list.page}
       onPageChange={list.setPage}
-      emptyMessage="No hay usuarios en esta vista"
+      emptyMessage={
+        tab === 'app'
+          ? 'No hay lectores registrados en la app. Créalos aquí o con el registro móvil.'
+          : 'No hay usuarios del panel en esta vista'
+      }
       columns={[
         { key: 'email', label: 'Email' },
         {
@@ -187,39 +242,126 @@ export function UsersPage() {
           key: 'isActive',
           label: 'Estado',
           render: (row) => (
-            <Badge variant={row.isActive ? 'success' : 'muted'}>
-              {row.isActive ? 'Activo' : 'Inactivo'}
-            </Badge>
+            <div className="flex flex-wrap gap-1.5">
+              <Badge variant={row.isActive ? 'success' : 'muted'}>
+                {row.isActive ? 'Activo' : 'Bloqueado'}
+              </Badge>
+              {tab === 'app' && row.canPost === false ? (
+                <Badge variant="warning">Sin publicar</Badge>
+              ) : null}
+            </div>
           ),
         },
         {
           key: 'actions',
           label: 'Acciones',
-          render: (row) => (
-            <div className="flex flex-wrap gap-2">
-              {canManage && (
-                <Link
-                  to={`/users/${row.id}/edit`}
-                  className="text-sm font-medium text-gold-dim hover:text-gold dark:text-gold-light"
-                >
-                  Editar
-                </Link>
-              )}
-              {isSuperAdmin(currentUser?.roles) &&
-                row.id !== currentUser?.id &&
-                row.isActive !== false && (
-                  <button
-                    type="button"
-                    disabled={impersonateMutation.isPending}
-                    onClick={() => impersonateMutation.mutate(String(row.id))}
-                    className="inline-flex items-center gap-1 text-sm font-medium text-theme-secondary hover:text-theme"
-                  >
-                    <VenetianMask className="h-3.5 w-3.5" strokeWidth={1.75} />
-                    Personificar
-                  </button>
-                )}
-            </div>
-          ),
+          render: (row) => {
+            const id = String(row.id);
+            const isSelf = id === currentUser?.id;
+            const editPath = `/users/${id}/edit?context=${tab}`;
+            const isApp = tab === 'app';
+
+            return (
+              <RowActions
+                actions={[
+                  {
+                    key: 'edit',
+                    label: 'Editar',
+                    icon: <Pencil className="h-4 w-4" strokeWidth={1.75} />,
+                    tone: 'edit',
+                    to: resourceEditPath(editPath),
+                    hidden: !canManage,
+                  },
+                  {
+                    key: 'preview',
+                    label: 'Ver detalle',
+                    icon: <Eye className="h-4 w-4" strokeWidth={1.75} />,
+                    tone: 'view',
+                    to: resourceViewPath(editPath),
+                  },
+                  {
+                    key: 'impersonate',
+                    label: 'Personificar',
+                    icon: <VenetianMask className="h-4 w-4" strokeWidth={1.75} />,
+                    tone: 'info',
+                    hidden:
+                      tab === 'app' ||
+                      !isSuperAdmin(currentUser?.roles) ||
+                      isSelf ||
+                      row.isActive === false,
+                    disabled: pending,
+                    onClick: () => impersonateMutation.mutate(id),
+                  },
+                  {
+                    key: 'block',
+                    label: row.isActive ? 'Bloquear cuenta' : 'Desbloquear cuenta',
+                    icon: row.isActive ? (
+                      <Ban className="h-4 w-4" strokeWidth={1.75} />
+                    ) : (
+                      <UserCheck className="h-4 w-4" strokeWidth={1.75} />
+                    ),
+                    tone: row.isActive ? 'warning' : 'success',
+                    hidden: !canManage || isSelf,
+                    disabled: pending,
+                    onClick: () => {
+                      const next = !row.isActive;
+                      void confirmAction(
+                        next
+                          ? '¿Desbloquear esta cuenta para que pueda iniciar sesión?'
+                          : '¿Bloquear esta cuenta? No podrá iniciar sesión.',
+                        next ? 'Desbloquear cuenta' : 'Bloquear cuenta',
+                        next ? 'warning' : 'danger',
+                      ).then((ok) => {
+                        if (ok) updateMutation.mutate({ id, data: { isActive: next } });
+                      });
+                    },
+                  },
+                  {
+                    key: 'restrict',
+                    label: row.canPost === false ? 'Permitir publicar' : 'Restringir publicaciones',
+                    icon:
+                      row.canPost === false ? (
+                        <MessageSquare className="h-4 w-4" strokeWidth={1.75} />
+                      ) : (
+                        <MessageSquareOff className="h-4 w-4" strokeWidth={1.75} />
+                      ),
+                    tone: row.canPost === false ? 'success' : 'warning',
+                    hidden: !canManage || !isApp || isSelf,
+                    disabled: pending,
+                    onClick: () => {
+                      const next = row.canPost === false;
+                      void confirmAction(
+                        next
+                          ? '¿Permitir de nuevo que publique en la comunidad?'
+                          : '¿Restringir publicaciones en la comunidad? Seguirá pudiendo leer.',
+                        next ? 'Permitir publicar' : 'Restringir publicaciones',
+                        next ? 'warning' : 'danger',
+                      ).then((ok) => {
+                        if (ok) updateMutation.mutate({ id, data: { canPost: next } });
+                      });
+                    },
+                  },
+                  {
+                    key: 'delete',
+                    label: 'Eliminar cuenta',
+                    icon: <Trash2 className="h-4 w-4" strokeWidth={1.75} />,
+                    tone: 'danger',
+                    hidden: !canManage || !isApp || isSelf,
+                    disabled: pending,
+                    onClick: () => {
+                      void confirmAction(
+                        '¿Eliminar y anonimizar esta cuenta de forma permanente? No se puede deshacer.',
+                        'Eliminar cuenta',
+                        'danger',
+                      ).then((ok) => {
+                        if (ok) deleteMutation.mutate(id);
+                      });
+                    },
+                  },
+                ]}
+              />
+            );
+          },
         },
       ]}
     />
