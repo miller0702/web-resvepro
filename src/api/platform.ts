@@ -22,7 +22,8 @@ export const platformApi = {
   updateDrawerItem: (code: string, data: unknown) =>
     apiClient.patch(`/admin/app/drawer/${code}`, data),
   bulkUpdateDrawerItems: (items: unknown[]) => apiClient.patch('/admin/app/drawer', { items }),
-  getManualSections: () => apiClient.get('/admin/app/manual'),
+  getManualSections: (audience?: 'APP' | 'PANEL' | 'ALL') =>
+    apiClient.get('/admin/app/manual', { params: audience ? { audience } : { audience: 'ALL' } }),
   bulkUpdateManualSections: (items: unknown[]) => apiClient.patch('/admin/app/manual', { items }),
   getTutorialSteps: () => apiClient.get('/admin/app/tutorial'),
   bulkUpdateTutorialSteps: (items: unknown[]) => apiClient.patch('/admin/app/tutorial', { items }),

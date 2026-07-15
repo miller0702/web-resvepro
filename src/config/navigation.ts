@@ -76,6 +76,7 @@ export const navGroups: NavGroup[] = [
     collapsible: true,
     items: [
       { to: '/app', label: 'App móvil', icon: Smartphone },
+      { to: '/help', label: 'Manual del panel', icon: BookOpen },
       { to: '/requirements', label: 'Requerimientos', icon: MessageSquarePlus },
       { to: '/settings', label: 'Configuración', icon: Settings },
     ],
@@ -106,6 +107,7 @@ export const routeTitles: Record<string, string> = {
   '/moderation': 'Moderación',
   '/requirements': 'Requerimientos',
   '/settings': 'Configuración',
+  '/help': 'Manual del panel',
   '/app': 'App móvil',
 };
 

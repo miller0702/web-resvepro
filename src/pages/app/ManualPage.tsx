@@ -1,4 +1,4 @@
-import { Link } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { BookOpen, Pencil } from 'lucide-react';
 import { platformApi } from '../../api/platform';
@@ -8,21 +8,42 @@ import { Badge } from '../../components/ui/Badge';
 import { SortableList } from '../../components/sortable/SortableList';
 import { assignSortOrder } from '../../utils/reorder';
 
+export type ManualAudience = 'APP' | 'PANEL';
+
 export interface ManualSection {
   id: string;
   code: string;
+  audience: ManualAudience;
   title: string;
   body: string;
   sortOrder: number;
   isVisible: boolean;
 }
 
+function parseAudience(value: string | null): ManualAudience {
+  return value === 'PANEL' ? 'PANEL' : 'APP';
+}
+
 export function ManualPage({ embedded = false }: { embedded?: boolean }) {
   const queryClient = useQueryClient();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const audience = parseAudience(searchParams.get('audience'));
+
+  const setAudience = (next: ManualAudience) => {
+    const params = new URLSearchParams(searchParams);
+    params.set('tab', 'manual');
+    if (next === 'APP') {
+      params.delete('audience');
+    } else {
+      params.set('audience', next);
+    }
+    setSearchParams(params);
+  };
+
   const { data, isLoading } = useQuery({
-    queryKey: ['manual-sections'],
+    queryKey: ['manual-sections', audience],
     queryFn: async () => {
-      const res = await platformApi.getManualSections();
+      const res = await platformApi.getManualSections(audience);
       return res.data.data as ManualSection[];
     },
   });
@@ -51,15 +72,46 @@ export function ManualPage({ embedded = false }: { embedded?: boolean }) {
       {!embedded ? (
         <PageHeader
           title="Manual de usuario"
-          subtitle="Contenido del manual en la app móvil. Manténlo al día con cada función nueva."
+          subtitle="Contenido editable guardado en la base de datos (app y panel)."
         />
       ) : null}
+
+      <div className="mb-4 flex flex-wrap gap-2">
+        {(
+          [
+            { id: 'APP' as const, label: 'App móvil' },
+            { id: 'PANEL' as const, label: 'Panel web' },
+          ] as const
+        ).map((item) => (
+          <button
+            key={item.id}
+            type="button"
+            onClick={() => setAudience(item.id)}
+            className={`rounded-xl px-4 py-2 text-sm font-medium transition ${
+              audience === item.id
+                ? 'bg-gold/15 text-gold-dim dark:text-gold-light'
+                : 'surface-muted text-theme-secondary hover:opacity-90'
+            }`}
+          >
+            {item.label}
+          </button>
+        ))}
+      </div>
 
       <div className="mb-6 flex items-start gap-3 rounded-xl bg-sage/10 p-4 dark:bg-sage/15">
         <BookOpen className="mt-0.5 h-5 w-5 shrink-0 text-sage" strokeWidth={1.75} />
         <p className="text-sm text-theme-secondary">
-          Arrastra las tarjetas para cambiar el orden en la app. Edita el contenido de cada sección en
-          su página dedicada.
+          {audience === 'APP'
+            ? 'Estas secciones se muestran en el Manual de usuario de la app. Arrastra para ordenar y edita cada tarjeta.'
+            : 'Estas secciones alimentan el Manual del panel (menú Manual del panel). También puedes leerlas ahí en modo guía.'}
+          {audience === 'PANEL' ? (
+            <>
+              {' '}
+              <Link to="/help" className="font-medium text-gold-dim dark:text-gold-light">
+                Ver manual del panel
+              </Link>
+            </>
+          ) : null}
         </p>
       </div>
 

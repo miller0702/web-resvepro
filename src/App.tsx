@@ -32,6 +32,7 @@ import { ManualEditPage } from './pages/app/ManualEditPage';
 import { TutorialEditPage } from './pages/app/TutorialEditPage';
 import { LegalPublicPage } from './pages/legal/LegalPublicPage';
 import { AccountDeletionPage } from './pages/legal/AccountDeletionPage';
+import { HelpManualPage } from './pages/HelpManualPage';
 
 export default function App() {
   return (
@@ -75,6 +76,7 @@ export default function App() {
         <Route path="requirements" element={<RequirementsPage />} />
         <Route path="moderation" element={<ModerationReportsPage />} />
         <Route path="settings" element={<SettingsPage />} />
+        <Route path="help" element={<HelpManualPage />} />
         <Route path="app" element={<AppPage />} />
         <Route path="app/manual/:code" element={<ManualEditPage />} />
         <Route path="app/tutorial/:code" element={<TutorialEditPage />} />

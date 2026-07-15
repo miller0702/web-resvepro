@@ -22,9 +22,9 @@ export function ManualEditPage() {
   const queryClient = useQueryClient();
 
   const { data, isLoading } = useQuery({
-    queryKey: ['manual-sections'],
+    queryKey: ['manual-sections', 'ALL'],
     queryFn: async () => {
-      const res = await platformApi.getManualSections();
+      const res = await platformApi.getManualSections('ALL');
       return res.data.data as ManualSection[];
     },
   });
@@ -57,9 +57,15 @@ export function ManualEditPage() {
       ]),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['manual-sections'] });
-      navigate('/app?tab=manual');
+      const audience = section?.audience === 'PANEL' ? 'PANEL' : 'APP';
+      navigate(
+        audience === 'PANEL' ? '/app?tab=manual&audience=PANEL' : '/app?tab=manual',
+      );
     },
   });
+
+  const backTo =
+    section?.audience === 'PANEL' ? '/app?tab=manual&audience=PANEL' : '/app?tab=manual';
 
   if (isLoading) return <Loading />;
   if (!section) {
@@ -79,10 +85,10 @@ export function ManualEditPage() {
     <div className="max-w-3xl">
       <PageHeader
         title={`Editar: ${section.title}`}
-        subtitle={`Sección del manual · ${section.code}`}
+        subtitle={`Sección del manual (${section.audience === 'PANEL' ? 'panel web' : 'app móvil'}) · ${section.code}`}
         action={
           <Link
-            to="/app?tab=manual"
+            to={backTo}
             className="inline-flex items-center gap-2 text-sm font-medium text-theme-secondary hover:text-theme"
           >
             <ArrowLeft className="h-4 w-4" strokeWidth={1.75} />
@@ -98,7 +104,7 @@ export function ManualEditPage() {
         <Input label="Título" {...register('title', { required: true })} />
         <div className="space-y-1.5">
           <label className="block text-sm font-medium text-theme-secondary">Contenido</label>
-          <textarea {...register('body', { required: true })} rows={12} className="input-field" />
+          <textarea {...register('body', { required: true })} rows={18} className="input-field font-mono text-sm" />
         </div>
         <label className="flex cursor-pointer items-center gap-3 rounded-xl border px-4 py-3 surface-muted" style={{ borderColor: 'var(--color-border)' }}>
           <input
@@ -107,7 +113,9 @@ export function ManualEditPage() {
             onChange={(e) => setValue('isVisible', e.target.checked)}
             className="h-4 w-4 accent-gold"
           />
-          <span className="text-sm text-theme-secondary">Visible en la app</span>
+          <span className="text-sm text-theme-secondary">
+            {section.audience === 'PANEL' ? 'Visible en el manual del panel' : 'Visible en el manual de la app'}
+          </span>
         </label>
 
         <div className="flex gap-3 pt-2">
@@ -115,7 +123,7 @@ export function ManualEditPage() {
             <Save className="mr-2 h-4 w-4" strokeWidth={1.75} />
             {saveMutation.isPending ? 'Guardando...' : 'Guardar sección'}
           </Button>
-          <Link to="/app?tab=manual">
+          <Link to={backTo}>
             <Button type="button" variant="ghost">
               Cancelar
             </Button>
