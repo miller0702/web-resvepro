@@ -90,7 +90,7 @@ export function CategoryFormPage() {
   if (isEdit && isView) {
     return (
       <div className="w-full space-y-6">
-        <PageHeader title={categoryName} subtitle="Vista de detalle" action={headerActions} />
+        <PageHeader title={categoryName} subtitle="Vista de detalle" action={headerActions} backTo="/categories" />
 
         <DetailSection>
           <DetailGrid>
@@ -118,6 +118,7 @@ export function CategoryFormPage() {
       <PageHeader
         title={isEdit ? 'Editar categoría' : 'Nueva categoría'}
         action={headerActions}
+        backTo="/categories"
       />
       <form
         onSubmit={handleSubmit((d) => saveMutation.mutate(d))}

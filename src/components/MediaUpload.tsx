@@ -1,10 +1,12 @@
 import { useRef, useState } from 'react';
+import { isAxiosError } from 'axios';
 import { mediaApi } from '../api/media';
 import { Button } from './ui/Button';
 import { toast } from '../lib/toast';
 import {
   formatBytes,
   INLINE_MEDIA_MAX_BYTES,
+  MAX_MEDIA_UPLOAD_BYTES,
   prepareMediaFile,
 } from '../utils/compressVideo';
 
@@ -14,9 +16,18 @@ interface MediaUploadProps {
   mediaType?: string;
   currentFilename?: string | null;
   disabled?: boolean;
-  /** Si true (default en VIDEO), comprime archivos > 5 MB antes de subir. */
+  /**
+   * Si true (default en VIDEO): cuando GCS no está disponible, comprime archivos > 5 MB
+   * para intentar subirlos inline.
+   */
   compressLargeVideo?: boolean;
   onUploaded: (asset: { id: string; url: string; filename: string; mimeType: string }) => void;
+}
+
+function isGcsUnavailable(err: unknown): boolean {
+  if (!isAxiosError(err)) return false;
+  const status = err.response?.status;
+  return status === 503 || status === 500;
 }
 
 export function MediaUpload({
@@ -41,16 +52,42 @@ export function MediaUpload({
     setError(null);
     setProgressLabel(null);
     try {
-      let toUpload = file;
-      if (file.size > INLINE_MEDIA_MAX_BYTES) {
-        if (!shouldCompress) {
-          const msg = `El archivo pesa ${formatBytes(file.size)}. Máximo inline: ${formatBytes(INLINE_MEDIA_MAX_BYTES)}. Usa una URL externa.`;
-          setError(msg);
-          toast.warning(msg);
-          return;
-        }
+      if (file.size > MAX_MEDIA_UPLOAD_BYTES) {
+        const msg = `El archivo pesa ${formatBytes(file.size)}. Máximo permitido: ${formatBytes(MAX_MEDIA_UPLOAD_BYTES)}.`;
+        setError(msg);
+        toast.warning(msg);
+        return;
+      }
+
+      // Archivos pequeños → Postgres inline
+      if (file.size <= INLINE_MEDIA_MAX_BYTES) {
+        setProgressLabel('Subiendo…');
+        const res = await mediaApi.upload(file, mediaType);
+        onUploaded(res.data.data);
+        toast.success('Archivo subido correctamente.');
+        return;
+      }
+
+      // Archivos grandes → GCS (signed URL)
+      try {
         toast.info(
-          `El video pesa ${formatBytes(file.size)}. Comprimiendo para poder subirlo…`,
+          `Subiendo ${formatBytes(file.size)} a Cloud Storage…`,
+          'Archivo grande',
+        );
+        setProgressLabel('Preparando subida…');
+        const asset = await mediaApi.uploadViaGcs(file, mediaType, (ratio) => {
+          setProgressLabel(`Subiendo a la nube… ${Math.round(ratio * 100)}%`);
+        });
+        onUploaded(asset);
+        toast.success('Archivo subido a Cloud Storage.');
+        return;
+      } catch (gcsErr) {
+        if (!shouldCompress || !isGcsUnavailable(gcsErr)) {
+          throw gcsErr;
+        }
+        // Fallback: comprimir e intentar inline si GCS no está configurado
+        toast.info(
+          `Cloud Storage no disponible. Comprimiendo a ≤ ${formatBytes(INLINE_MEDIA_MAX_BYTES)}…`,
           'Compresión',
         );
         setProgressLabel('Comprimiendo video…');
@@ -61,26 +98,32 @@ export function MediaUpload({
             setProgressLabel(`Comprimiendo… ${Math.round(ratio * 100)}%`);
           },
         });
-        toUpload = prepared.file;
-        if (prepared.compressed) {
-          toast.success(
-            `Comprimido a ${formatBytes(toUpload.size)}. Subiendo…`,
-            'Video listo',
+        if (prepared.file.size > INLINE_MEDIA_MAX_BYTES) {
+          throw new Error(
+            `Tras comprimir sigue pesando ${formatBytes(prepared.file.size)}. Configura GCS_BUCKET o usa una URL externa.`,
           );
         }
+        setProgressLabel('Subiendo…');
+        const res = await mediaApi.upload(prepared.file, mediaType);
+        onUploaded(res.data.data);
+        toast.success(
+          prepared.compressed
+            ? `Comprimido a ${formatBytes(prepared.file.size)} y subido.`
+            : 'Archivo subido correctamente.',
+        );
       }
-
-      setProgressLabel('Subiendo…');
-      const res = await mediaApi.upload(toUpload, mediaType);
-      onUploaded(res.data.data);
-      toast.success('Archivo subido correctamente.');
     } catch (err) {
-      const message =
-        err instanceof Error
+      const message = isAxiosError(err)
+        ? String(
+            (err.response?.data as { message?: string | string[] })?.message ??
+              err.message,
+          )
+        : err instanceof Error
           ? err.message
-          : 'No se pudo subir el archivo. Máximo 5 MB para inline (o usa URL externa).';
-      setError(message);
-      toast.error(message);
+          : 'No se pudo subir el archivo.';
+      const display = Array.isArray(message) ? message.join(', ') : message;
+      setError(display);
+      toast.error(display);
     } finally {
       setUploading(false);
       setProgressLabel(null);
@@ -121,12 +164,11 @@ export function MediaUpload({
                 ? 'Reemplazar archivo'
                 : 'Subir archivo'}
           </Button>
-          {shouldCompress ? (
-            <p className="text-xs text-theme-muted">
-              Archivos de video mayores a 5 MB se comprimen automáticamente. Si aún superan el
-              límite, usa YouTube o una URL MP4 externa.
-            </p>
-          ) : null}
+          <p className="text-xs text-theme-muted">
+            Hasta {formatBytes(INLINE_MEDIA_MAX_BYTES)} se guarda en la base de datos. De ahí hasta{' '}
+            {formatBytes(MAX_MEDIA_UPLOAD_BYTES)} se sube a Cloud Storage. También puedes usar
+            YouTube o una URL MP4 externa.
+          </p>
         </>
       ) : null}
       {error ? <p className="text-sm text-ember">{error}</p> : null}

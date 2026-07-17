@@ -157,7 +157,7 @@ export function UserFormPage() {
   if (isEdit && isView) {
     return (
       <div className="w-full max-w-2xl space-y-6">
-        <PageHeader title={displayName} subtitle="Vista de detalle" action={headerActions} />
+        <PageHeader title={displayName} subtitle="Vista de detalle" action={headerActions} backTo="/users" />
 
         <DetailSection>
           <DetailFlags>
@@ -209,6 +209,7 @@ export function UserFormPage() {
     <div className="w-full max-w-2xl">
       <PageHeader
         title={isEdit ? 'Editar usuario' : 'Nuevo usuario'}
+        backTo="/users"
         subtitle={
           defaultContext === 'app'
             ? 'Cuenta de lector para la app móvil'

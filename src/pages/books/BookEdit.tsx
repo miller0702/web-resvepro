@@ -206,6 +206,7 @@ export function BookEditPage() {
           title={String(book?.title ?? 'Libro')}
           subtitle="Vista de detalle"
           action={headerActions}
+          backTo="/books"
         />
 
         <DetailSection>
@@ -304,6 +305,7 @@ export function BookEditPage() {
       <PageHeader
         title="Editar libro"
         subtitle={String(book?.title ?? '')}
+        backTo="/books"
         action={
           <Badge variant={isPublished ? 'success' : 'muted'}>
             {isPublished ? 'Publicado' : 'Borrador'}

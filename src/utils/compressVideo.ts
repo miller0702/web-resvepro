@@ -1,19 +1,27 @@
 /** Límite de almacenamiento inline en la API (Postgres). */
 export const INLINE_MEDIA_MAX_BYTES = 5 * 1024 * 1024;
 
+/** Límite de subida vía GCS (signed URL). */
+export const MAX_MEDIA_UPLOAD_BYTES = 100 * 1024 * 1024;
+
 export function formatBytes(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`;
   if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
-function pickMimeType(): string {
-  const candidates = [
-    'video/webm;codecs=vp9,opus',
-    'video/webm;codecs=vp8,opus',
-    'video/webm',
-    'video/mp4',
-  ];
+function pickMimeType(withAudio: boolean): string {
+  const candidates = withAudio
+    ? [
+        'video/webm;codecs=vp9,opus',
+        'video/webm;codecs=vp8,opus',
+        'video/webm;codecs=vp9',
+        'video/webm;codecs=vp8',
+        'video/webm',
+        'video/mp4',
+      ]
+    : ['video/webm;codecs=vp9', 'video/webm;codecs=vp8', 'video/webm', 'video/mp4'];
+
   for (const type of candidates) {
     if (typeof MediaRecorder !== 'undefined' && MediaRecorder.isTypeSupported(type)) {
       return type;
@@ -31,8 +39,10 @@ function loadVideo(file: File): Promise<LoadedVideo> {
   return new Promise((resolve, reject) => {
     const video = document.createElement('video');
     video.preload = 'auto';
+    // muted permite autoplay para capturar frames; el audio sí se puede capturar del stream.
     video.muted = true;
     video.playsInline = true;
+    video.crossOrigin = 'anonymous';
     const objectUrl = URL.createObjectURL(file);
     video.onloadedmetadata = () => resolve({ video, objectUrl });
     video.onerror = () => {
@@ -43,9 +53,27 @@ function loadVideo(file: File): Promise<LoadedVideo> {
   });
 }
 
+function captureSourceAudioTracks(source: HTMLVideoElement): MediaStreamTrack[] {
+  const mediaEl = source as HTMLVideoElement & {
+    captureStream?: () => MediaStream;
+    mozCaptureStream?: () => MediaStream;
+  };
+  try {
+    const stream =
+      typeof mediaEl.captureStream === 'function'
+        ? mediaEl.captureStream()
+        : typeof mediaEl.mozCaptureStream === 'function'
+          ? mediaEl.mozCaptureStream()
+          : null;
+    return stream?.getAudioTracks() ?? [];
+  } catch {
+    return [];
+  }
+}
+
 /**
  * Re-codifica el video a menor resolución/bitrate para acercarlo al límite inline.
- * Usa MediaRecorder en el navegador (WebM en la mayoría de casos).
+ * Incluye pista de audio cuando el navegador lo permite.
  */
 export async function compressVideoFile(
   file: File,
@@ -66,14 +94,18 @@ export async function compressVideoFile(
   }
 
   const { video: source, objectUrl } = await loadVideo(file);
+  const audioTracks: MediaStreamTrack[] = [];
+  const videoTracks: MediaStreamTrack[] = [];
+
   try {
     const duration = Number.isFinite(source.duration) && source.duration > 0 ? source.duration : 30;
     const scale = Math.min(1, maxWidth / (source.videoWidth || maxWidth));
     const width = Math.max(2, Math.round(((source.videoWidth || 1280) * scale) / 2) * 2);
     const height = Math.max(2, Math.round(((source.videoHeight || 720) * scale) / 2) * 2);
 
-    const targetBits = Math.floor((maxBytes * 0.85 * 8) / duration);
+    const targetBits = Math.floor((maxBytes * 0.8 * 8) / duration);
     const videoBitsPerSecond = Math.max(250_000, Math.min(2_500_000, targetBits));
+    const audioBitsPerSecond = 128_000;
 
     const canvas = document.createElement('canvas');
     canvas.width = width;
@@ -81,11 +113,22 @@ export async function compressVideoFile(
     const ctx = canvas.getContext('2d');
     if (!ctx) throw new Error('No se pudo preparar el compresor de video');
 
-    const stream = canvas.captureStream(24);
-    const mimeType = pickMimeType();
-    const recorder = new MediaRecorder(stream, {
+    source.currentTime = 0;
+    await source.play().catch(() => undefined);
+
+    // Audio del original + video del canvas (para bajar resolución).
+    audioTracks.push(...captureSourceAudioTracks(source));
+    const canvasStream = canvas.captureStream(24);
+    videoTracks.push(...canvasStream.getVideoTracks());
+
+    const combined = new MediaStream([...videoTracks, ...audioTracks]);
+    const hasAudio = audioTracks.length > 0;
+    const mimeType = pickMimeType(hasAudio);
+
+    const recorder = new MediaRecorder(combined, {
       mimeType,
       videoBitsPerSecond,
+      ...(hasAudio ? { audioBitsPerSecond } : {}),
     });
 
     const chunks: BlobPart[] = [];
@@ -95,12 +138,14 @@ export async function compressVideoFile(
 
     const recorded = new Promise<Blob>((resolve, reject) => {
       recorder.onerror = () => reject(new Error('Falló la compresión del video'));
-      recorder.onstop = () => resolve(new Blob(chunks, { type: mimeType.split(';')[0] }));
+      recorder.onstop = () => {
+        const type = mimeType.split(';')[0] || 'video/webm';
+        resolve(new Blob(chunks, { type }));
+      };
     });
 
-    source.currentTime = 0;
-    await source.play().catch(() => undefined);
-    recorder.start(250);
+    // Un solo blob al final mejora el seek frente a timeslices muy cortos.
+    recorder.start();
 
     await new Promise<void>((resolve, reject) => {
       let frameId = 0;
@@ -126,7 +171,6 @@ export async function compressVideoFile(
 
     source.pause();
     if (recorder.state !== 'inactive') recorder.stop();
-    stream.getTracks().forEach((t) => t.stop());
     options?.onProgress?.(1);
 
     const blob = await recorded;
@@ -145,6 +189,13 @@ export async function compressVideoFile(
 
     return compressed;
   } finally {
+    for (const track of [...audioTracks, ...videoTracks]) {
+      try {
+        track.stop();
+      } catch {
+        /* ignore */
+      }
+    }
     URL.revokeObjectURL(objectUrl);
   }
 }

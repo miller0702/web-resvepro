@@ -49,7 +49,7 @@ export function BookFormPage() {
 
   return (
     <div className="w-full">
-      <PageHeader title="Nuevo libro" subtitle="Añade una obra al catálogo" />
+      <PageHeader title="Nuevo libro" subtitle="Añade una obra al catálogo" backTo="/books" />
       <form onSubmit={handleSubmit(onSubmit)} className="glass-card w-full space-y-5 p-8">
         <Input label="Título" error={errors.title?.message} {...register('title')} />
         <div className="space-y-1.5">

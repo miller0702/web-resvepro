@@ -96,7 +96,7 @@ export function CollectionFormPage() {
   if (isEdit && isView) {
     return (
       <div className="w-full space-y-6">
-        <PageHeader title={collectionName} subtitle="Vista de detalle" action={headerActions} />
+        <PageHeader title={collectionName} subtitle="Vista de detalle" action={headerActions} backTo="/collections" />
 
         <DetailSection>
           <DetailGrid>
@@ -135,6 +135,7 @@ export function CollectionFormPage() {
       <PageHeader
         title={isEdit ? 'Editar colección' : 'Nueva colección'}
         action={headerActions}
+        backTo="/collections"
       />
       <form
         onSubmit={handleSubmit((d) => saveMutation.mutate(d))}

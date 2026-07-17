@@ -181,7 +181,7 @@ export function PodcastEditPage() {
   if (!isNew && isView) {
     return (
       <div className="w-full space-y-6">
-        <PageHeader title={podcastTitle} subtitle="Vista de detalle" action={headerActions} />
+        <PageHeader title={podcastTitle} subtitle="Vista de detalle" action={headerActions} backTo="/podcasts" />
 
         <DetailSection title="Serie">
           <div className="space-y-5">
@@ -241,6 +241,7 @@ export function PodcastEditPage() {
         title={isNew ? 'Nuevo podcast' : 'Editar podcast'}
         subtitle={!isNew ? podcastTitle : undefined}
         action={headerActions}
+        backTo="/podcasts"
       />
 
       {isNew ? (

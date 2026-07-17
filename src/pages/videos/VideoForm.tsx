@@ -12,33 +12,14 @@ import { Loading } from '../../components/ui/Loading';
 import { formatDuration } from '../../utils/format';
 import { ResourceModeHeaderAction, useResourceMode } from '../../hooks/useResourceMode';
 import { DetailField, DetailFlags, DetailGrid, DetailSection } from '../../components/ui/DetailView';
+import { VideoPreviewPlayer } from '../../components/videos/VideoPreviewPlayer';
 import { useToast } from '../../providers/ToastProvider';
 import { useLoading } from '../../providers/LoadingProvider';
-
-function parseYouTubeVideoId(input: string): string | null {
-  const value = input.trim();
-  if (!value) return null;
-  try {
-    const url = new URL(value);
-    if (url.hostname.includes('youtu.be')) {
-      const id = url.pathname.split('/').filter(Boolean)[0];
-      return id && id.length === 11 ? id : null;
-    }
-    if (url.hostname.includes('youtube.com')) {
-      if (url.pathname === '/watch') {
-        const id = url.searchParams.get('v');
-        return id && id.length === 11 ? id : null;
-      }
-      const parts = url.pathname.split('/').filter(Boolean);
-      if (parts[0] === 'embed' || parts[0] === 'shorts') {
-        return parts[1] && parts[1].length === 11 ? parts[1] : null;
-      }
-    }
-  } catch {
-    return null;
-  }
-  return null;
-}
+import {
+  extractMediaIdFromContentPath,
+  isAbsoluteHttpUrl,
+  parseYouTubeVideoId,
+} from '../../utils/mediaUrl';
 
 function isYouTubeUrl(input: string) {
   return parseYouTubeVideoId(input) !== null;
@@ -85,23 +66,36 @@ export function VideoFormPage() {
     if (videoQuery.data) {
       const v = videoQuery.data;
       const youtubeId = String(v.youtubeVideoId ?? '');
-      const legacyUrl = String(v.videoUrl ?? '');
-      const url =
-        v.sourceType === 'YOUTUBE' && youtubeId
-          ? `https://www.youtube.com/watch?v=${youtubeId}`
-          : legacyUrl;
+      const resolvedUrl = String(v.videoUrl ?? '');
+      const mediaIdFromApi = String(v.mediaId ?? '') || null;
+      const mediaFromPath = extractMediaIdFromContentPath(resolvedUrl);
+      const linkedMediaId = mediaIdFromApi || mediaFromPath;
+
+      let videoUrl = '';
+      if (v.sourceType === 'YOUTUBE' && youtubeId) {
+        videoUrl = `https://www.youtube.com/watch?v=${youtubeId}`;
+      } else if (isAbsoluteHttpUrl(resolvedUrl) && !extractMediaIdFromContentPath(resolvedUrl)) {
+        // Solo URLs externas reales (CDN / MP4 directo), no rutas /media/.../content
+        videoUrl = resolvedUrl;
+      }
+
       setForm({
         title: String(v.title ?? ''),
         description: String(v.description ?? ''),
         categoryId: (v.category as { id?: string } | null)?.id ?? String(v.categoryId ?? ''),
         isPublished: Boolean(v.isPublished),
-        videoUrl: url,
+        videoUrl,
       });
-      const media = v.media as { id?: string; filename?: string } | null;
-      if (media?.id) {
-        setLocalMediaId(media.id);
-        setLocalMediaName(media.filename ?? 'video');
+
+      if (linkedMediaId) {
+        setLocalMediaId(linkedMediaId);
+        const media = v.media as { id?: string; filename?: string } | null;
+        setLocalMediaName(media?.filename ?? 'video subido');
+      } else {
+        setLocalMediaId(null);
+        setLocalMediaName(null);
       }
+
       const thumb = String(v.thumbnailUrl ?? '');
       if (thumb) {
         setPreview({
@@ -166,13 +160,19 @@ export function VideoFormPage() {
   const save = async () => {
     const url = form.videoUrl.trim();
     const youtube = isYouTubeUrl(url);
+    const mediaIdFromPath = extractMediaIdFromContentPath(url);
+    const externalUrl = Boolean(url && !youtube && isAbsoluteHttpUrl(url) && !mediaIdFromPath);
 
     if (!form.title.trim()) {
       toast.warning('Indica un título para el video.');
       return;
     }
 
-    if (!youtube && !url && !localMediaId) {
+    if (!youtube && !externalUrl && !localMediaId && !mediaIdFromPath) {
+      if (url && !isAbsoluteHttpUrl(url)) {
+        toast.warning('La URL debe empezar por https:// (YouTube o MP4 externo), o sube un archivo.');
+        return;
+      }
       toast.warning('Añade una URL (YouTube/MP4) o sube un archivo de video.');
       return;
     }
@@ -180,8 +180,11 @@ export function VideoFormPage() {
     try {
       await withLoading(
         (async () => {
-          let mediaId: string | undefined = localMediaId ?? undefined;
-          if (url && !youtube) {
+          // Preferir media ya subido (inline); no re-registrar rutas /media/.../content como externas.
+          let mediaId: string | undefined =
+            localMediaId ?? mediaIdFromPath ?? undefined;
+
+          if (externalUrl) {
             const ext = await mediaApi.registerExternal({
               url,
               filename: `${form.title || 'video'}.mp4`,
@@ -255,48 +258,47 @@ export function VideoFormPage() {
   if (!isNew && isView) {
     return (
       <div className="w-full space-y-6">
-        <PageHeader title={videoTitle} subtitle="Vista de detalle" action={headerActions} />
+        <PageHeader title={videoTitle} subtitle="Vista de detalle" action={headerActions} backTo="/videos" />
+
+        <VideoPreviewPlayer
+          source={{
+            videoUrl: form.videoUrl || String(videoQuery.data?.videoUrl ?? ''),
+            youtubeVideoId: String(videoQuery.data?.youtubeVideoId ?? '') || null,
+            mediaId: localMediaId,
+          }}
+          title={videoTitle}
+          description={form.description}
+          categoryName={categoryName}
+          durationSec={preview?.durationSec ?? (Number(videoQuery.data?.durationSec ?? 0) || null)}
+          viewCount={Number(videoQuery.data?.viewCount ?? 0) || null}
+        />
 
         <DetailSection>
-          <div className="flex flex-col gap-6 sm:flex-row">
-            {preview?.thumbnailUrl ? (
-              <img
-                src={preview.thumbnailUrl}
-                alt=""
-                className="aspect-video w-full max-w-sm shrink-0 rounded-xl object-cover shadow-sm ring-1 ring-[var(--color-border)] sm:w-72"
-              />
-            ) : null}
-            <div className="min-w-0 flex-1 space-y-5">
-              <DetailFlags>
-                <Badge variant={isPublished ? 'success' : 'muted'}>
-                  {isPublished ? 'En la app' : 'Borrador'}
-                </Badge>
-              </DetailFlags>
-              <DetailGrid>
-                <DetailField label="Categoría">{categoryName}</DetailField>
-                <DetailField label="Duración">
-                  {preview?.durationSec ? formatDuration(preview.durationSec) : null}
-                </DetailField>
-                <DetailField label="Descripción" span={2}>
-                  {form.description ? (
-                    <p className="whitespace-pre-wrap text-theme-secondary">{form.description}</p>
-                  ) : null}
-                </DetailField>
-                <DetailField label="URL del video" span={2}>
-                  {form.videoUrl ? (
-                    <a
-                      href={form.videoUrl}
-                      target="_blank"
-                      rel="noreferrer"
-                      className="font-medium text-gold-dim underline-offset-2 hover:underline dark:text-gold-light"
-                    >
-                      {form.videoUrl}
-                    </a>
-                  ) : null}
-                </DetailField>
-              </DetailGrid>
-            </div>
-          </div>
+          <DetailFlags>
+            <Badge variant={isPublished ? 'success' : 'muted'}>
+              {isPublished ? 'En la app' : 'Borrador'}
+            </Badge>
+          </DetailFlags>
+          <DetailGrid>
+            <DetailField label="Categoría">{categoryName}</DetailField>
+            <DetailField label="Duración">
+              {preview?.durationSec ? formatDuration(preview.durationSec) : null}
+            </DetailField>
+            <DetailField label="Archivo / URL" span={2}>
+              {localMediaName ? (
+                <span>Archivo subido: {localMediaName}</span>
+              ) : form.videoUrl ? (
+                <a
+                  href={form.videoUrl}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="font-medium text-gold-dim underline-offset-2 hover:underline dark:text-gold-light"
+                >
+                  {form.videoUrl}
+                </a>
+              ) : null}
+            </DetailField>
+          </DetailGrid>
         </DetailSection>
 
         <Button type="button" variant="ghost" onClick={() => navigate('/videos')}>
@@ -312,7 +314,20 @@ export function VideoFormPage() {
         title={isNew ? 'Nuevo video' : 'Editar video'}
         subtitle={!isNew ? videoTitle : undefined}
         action={headerActions}
+        backTo="/videos"
       />
+
+      <VideoPreviewPlayer
+        source={{
+          videoUrl: form.videoUrl,
+          mediaId: localMediaId,
+        }}
+        title={form.title}
+        description={form.description}
+        categoryName={categoryName}
+        durationSec={preview?.durationSec ?? null}
+      />
+
       <div className="glass-card w-full space-y-4 p-8">
         <Input
           label="Título"
@@ -356,24 +371,13 @@ export function VideoFormPage() {
             }}
             placeholder="https://www.youtube.com/watch?v=..."
           />
-          {youtubeMode && preview ? (
-            <div className="space-y-2 rounded-xl border border-ink/10 bg-parchment/40 p-4 dark:bg-white/5">
-              <p className="text-xs font-semibold uppercase tracking-wide text-theme-muted">
-                Vista previa YouTube
-              </p>
-              <img
-                src={preview.thumbnailUrl}
-                alt="Miniatura del video"
-                className="aspect-video w-full rounded-lg object-cover"
-              />
-              <p className="text-sm text-theme-secondary">
-                {previewLoading
-                  ? 'Obteniendo duración…'
-                  : preview.durationSec
-                    ? `Duración: ${formatDuration(preview.durationSec)}`
-                    : 'Duración: se detectará al guardar'}
-              </p>
-            </div>
+          {youtubeMode && previewLoading ? (
+            <p className="text-sm text-theme-secondary">Obteniendo datos de YouTube…</p>
+          ) : null}
+          {youtubeMode && preview?.durationSec ? (
+            <p className="text-sm text-theme-secondary">
+              Duración detectada: {formatDuration(preview.durationSec)}
+            </p>
           ) : null}
         </div>
 
@@ -381,8 +385,9 @@ export function VideoFormPage() {
           <div className="space-y-3 rounded-xl border p-4" style={{ borderColor: 'var(--color-border)' }}>
             <p className="text-sm font-medium text-theme">Opción B — Subir archivo</p>
             <p className="text-xs text-theme-muted">
-              Hasta 5 MB se suben directo. Si el video pesa más, el panel lo comprime automáticamente
-              antes de enviarlo. Si tras comprimir sigue siendo muy grande, usa la opción A.
+              Hasta 5 MB se guardan en la base de datos. Videos de hasta 100 MB se suben a Cloud
+              Storage. Si GCS no está configurado, se intenta comprimir a ≤ 5 MB. También puedes
+              usar YouTube o una URL MP4 (opción A).
             </p>
             <MediaUpload
               label="Archivo de video"

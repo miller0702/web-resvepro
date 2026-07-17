@@ -111,6 +111,7 @@ export function RoleFormPage() {
     <div className="w-full">
       <PageHeader
         title={isEdit ? 'Editar rol' : 'Nuevo rol del panel'}
+        backTo="/roles"
         subtitle={
           isEdit
             ? 'Actualiza el nombre, descripción y permisos de este rol.'

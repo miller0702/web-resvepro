@@ -88,6 +88,7 @@ export function AppSectionEditPage() {
       <PageHeader
         title={`Editar: ${APP_SECTION_LABELS[code ?? ''] ?? code}`}
         subtitle="Personaliza cómo se muestra esta sección en la app móvil."
+        backTo="/app"
       />
 
       <form

@@ -92,7 +92,7 @@ export function RadioFormPage() {
   if (!isNew && isView) {
     return (
       <div className="w-full space-y-6">
-        <PageHeader title={stationName} subtitle="Vista de detalle" action={headerActions} />
+        <PageHeader title={stationName} subtitle="Vista de detalle" action={headerActions} backTo="/radio" />
 
         <DetailSection>
           <div className="space-y-5">
@@ -139,6 +139,7 @@ export function RadioFormPage() {
         title={isNew ? 'Nueva emisora' : 'Editar emisora'}
         subtitle={!isNew ? stationName : undefined}
         action={headerActions}
+        backTo="/radio"
       />
       <div className="glass-card w-full space-y-4 p-8">
         <Input label="Nombre" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} />

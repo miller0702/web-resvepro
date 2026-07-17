@@ -83,7 +83,7 @@ export function AuthorFormPage() {
   if (isEdit && isView) {
     return (
       <div className="w-full space-y-6">
-        <PageHeader title={authorName} subtitle="Vista de detalle" action={headerActions} />
+        <PageHeader title={authorName} subtitle="Vista de detalle" action={headerActions} backTo="/authors" />
 
         <DetailSection>
           <DetailGrid>
@@ -109,6 +109,7 @@ export function AuthorFormPage() {
         title={isEdit ? 'Editar autor' : 'Nuevo autor'}
         subtitle="Autores de libros y podcasts"
         action={headerActions}
+        backTo="/authors"
       />
       <form
         onSubmit={handleSubmit((d) => saveMutation.mutate(d))}

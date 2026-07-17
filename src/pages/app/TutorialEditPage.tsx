@@ -1,7 +1,7 @@
 import { useEffect } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { ArrowLeft, Save } from 'lucide-react';
+import { Save } from 'lucide-react';
 import { platformApi } from '../../api/platform';
 import { PageHeader } from '../../components/ui/PageHeader';
 import { Button } from '../../components/ui/Button';
@@ -84,15 +84,7 @@ export function TutorialEditPage() {
       <PageHeader
         title={`Editar paso: ${step.title}`}
         subtitle={`Tutorial de bienvenida · ${step.code}`}
-        action={
-          <Link
-            to="/app?tab=tutorial"
-            className="inline-flex items-center gap-2 text-sm font-medium text-theme-secondary hover:text-theme"
-          >
-            <ArrowLeft className="h-4 w-4" strokeWidth={1.75} />
-            Volver
-          </Link>
-        }
+        backTo="/app?tab=tutorial"
       />
 
       <form
