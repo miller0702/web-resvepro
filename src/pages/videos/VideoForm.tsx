@@ -180,11 +180,11 @@ export function VideoFormPage() {
     try {
       await withLoading(
         (async () => {
-          // Preferir media ya subido (inline); no re-registrar rutas /media/.../content como externas.
+          // Preferir media ya subido; no re-registrar GCS/CDN si ya hay mediaId.
           let mediaId: string | undefined =
             localMediaId ?? mediaIdFromPath ?? undefined;
 
-          if (externalUrl) {
+          if (externalUrl && !mediaId) {
             const ext = await mediaApi.registerExternal({
               url,
               filename: `${form.title || 'video'}.mp4`,
@@ -385,9 +385,9 @@ export function VideoFormPage() {
           <div className="space-y-3 rounded-xl border p-4" style={{ borderColor: 'var(--color-border)' }}>
             <p className="text-sm font-medium text-theme">Opción B — Subir archivo</p>
             <p className="text-xs text-theme-muted">
-              Hasta 5 MB se guardan en la base de datos. Videos de hasta 100 MB se suben a Cloud
-              Storage. Si GCS no está configurado, se intenta comprimir a ≤ 5 MB. También puedes
-              usar YouTube o una URL MP4 (opción A).
+              El archivo se sube a Cloud Storage (hasta 100 MB). Las imágenes se optimizan
+              solas; videos &gt; 40 MB se comprimen un poco. También puedes usar YouTube o una
+              URL MP4 (opción A).
             </p>
             <MediaUpload
               label="Archivo de video"
@@ -398,7 +398,11 @@ export function VideoFormPage() {
               onUploaded={(asset) => {
                 setLocalMediaId(asset.id);
                 setLocalMediaName(asset.filename);
-                setForm((f) => ({ ...f, videoUrl: '' }));
+                // Si es GCS/EXTERNAL, conservar la URL pública para la vista previa.
+                setForm((f) => ({
+                  ...f,
+                  videoUrl: isAbsoluteHttpUrl(asset.url) ? asset.url : '',
+                }));
                 if (!isNew) {
                   void adminApi.updateVideo(id!, { mediaId: asset.id }).then(() => {
                     queryClient.invalidateQueries({ queryKey: ['video', id] });

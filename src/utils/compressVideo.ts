@@ -1,13 +1,80 @@
-/** Límite de almacenamiento inline en la API (Postgres). */
-export const INLINE_MEDIA_MAX_BYTES = 5 * 1024 * 1024;
-
-/** Límite de subida vía GCS (signed URL). */
+/** Límites de subida multimedia (GCS es el almacén canónico). */
+export const INLINE_MEDIA_MAX_BYTES = 5 * 1024 * 1024; // solo fallback sin GCS
 export const MAX_MEDIA_UPLOAD_BYTES = 100 * 1024 * 1024;
+
+/** Comprimir video ligeramente si supera este tamaño (sigue yendo a GCS). */
+export const VIDEO_SOFT_COMPRESS_BYTES = 40 * 1024 * 1024;
+
+/** Objetivo tras compresión suave de video. */
+export const VIDEO_SOFT_TARGET_BYTES = 80 * 1024 * 1024;
+
+/** Comprimir imágenes si superan este tamaño. */
+export const IMAGE_COMPRESS_THRESHOLD_BYTES = 200 * 1024;
 
 export function formatBytes(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`;
   if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+/**
+ * Comprime una imagen con canvas (JPEG). Ideal para portadas, miniaturas y avatares.
+ */
+export async function compressImageFile(
+  file: File,
+  options?: {
+    maxWidth?: number;
+    maxHeight?: number;
+    quality?: number;
+    onProgress?: (ratio: number) => void;
+  },
+): Promise<File> {
+  const maxWidth = options?.maxWidth ?? 1920;
+  const maxHeight = options?.maxHeight ?? 1920;
+  const quality = options?.quality ?? 0.82;
+
+  options?.onProgress?.(0.1);
+
+  const bitmap = await createImageBitmap(file);
+  try {
+    options?.onProgress?.(0.4);
+    let { width, height } = bitmap;
+    const scale = Math.min(1, maxWidth / width, maxHeight / height);
+    width = Math.max(1, Math.round(width * scale));
+    height = Math.max(1, Math.round(height * scale));
+
+    const canvas = document.createElement('canvas');
+    canvas.width = width;
+    canvas.height = height;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) throw new Error('No se pudo preparar el canvas de imagen');
+    ctx.drawImage(bitmap, 0, 0, width, height);
+
+    options?.onProgress?.(0.7);
+
+    const blob = await new Promise<Blob>((resolve, reject) => {
+      canvas.toBlob(
+        (b) => (b ? resolve(b) : reject(new Error('No se pudo comprimir la imagen'))),
+        'image/jpeg',
+        quality,
+      );
+    });
+
+    options?.onProgress?.(1);
+
+    // Si no mejora, devolver el original.
+    if (blob.size >= file.size * 0.98) {
+      return file;
+    }
+
+    const baseName = file.name.replace(/\.[^.]+$/, '') || 'image';
+    return new File([blob], `${baseName}.jpg`, {
+      type: 'image/jpeg',
+      lastModified: Date.now(),
+    });
+  } finally {
+    bitmap.close();
+  }
 }
 
 function pickMimeType(withAudio: boolean): string {
@@ -39,7 +106,6 @@ function loadVideo(file: File): Promise<LoadedVideo> {
   return new Promise((resolve, reject) => {
     const video = document.createElement('video');
     video.preload = 'auto';
-    // muted permite autoplay para capturar frames; el audio sí se puede capturar del stream.
     video.muted = true;
     video.playsInline = true;
     video.crossOrigin = 'anonymous';
@@ -71,52 +137,38 @@ function captureSourceAudioTracks(source: HTMLVideoElement): MediaStreamTrack[] 
   }
 }
 
-/**
- * Re-codifica el video a menor resolución/bitrate para acercarlo al límite inline.
- * Incluye pista de audio cuando el navegador lo permite.
- */
 export async function compressVideoFile(
   file: File,
   options?: {
     maxBytes?: number;
     maxWidth?: number;
+    videoBitsPerSecond?: number;
+    audioBitsPerSecond?: number;
     onProgress?: (ratio: number) => void;
   },
 ): Promise<File> {
-  const maxBytes = options?.maxBytes ?? INLINE_MEDIA_MAX_BYTES;
+  const maxBytes = options?.maxBytes ?? VIDEO_SOFT_TARGET_BYTES;
   const maxWidth = options?.maxWidth ?? 1280;
-
-  if (file.size <= maxBytes) return file;
-  if (typeof MediaRecorder === 'undefined') {
-    throw new Error(
-      'Este navegador no puede comprimir video. Usa una URL externa (YouTube o enlace MP4) o un archivo ≤ 5 MB.',
-    );
-  }
-
   const { video: source, objectUrl } = await loadVideo(file);
   const audioTracks: MediaStreamTrack[] = [];
   const videoTracks: MediaStreamTrack[] = [];
 
   try {
-    const duration = Number.isFinite(source.duration) && source.duration > 0 ? source.duration : 30;
-    const scale = Math.min(1, maxWidth / (source.videoWidth || maxWidth));
-    const width = Math.max(2, Math.round(((source.videoWidth || 1280) * scale) / 2) * 2);
-    const height = Math.max(2, Math.round(((source.videoHeight || 720) * scale) / 2) * 2);
+    await source.play().catch(() => undefined);
+    source.pause();
+    source.currentTime = 0;
 
-    const targetBits = Math.floor((maxBytes * 0.8 * 8) / duration);
-    const videoBitsPerSecond = Math.max(250_000, Math.min(2_500_000, targetBits));
-    const audioBitsPerSecond = 128_000;
+    const duration = Number.isFinite(source.duration) && source.duration > 0 ? source.duration : 1;
+    const scale = Math.min(1, maxWidth / (source.videoWidth || maxWidth));
+    const width = Math.max(2, Math.round((source.videoWidth || 640) * scale) & ~1);
+    const height = Math.max(2, Math.round((source.videoHeight || 360) * scale) & ~1);
 
     const canvas = document.createElement('canvas');
     canvas.width = width;
     canvas.height = height;
     const ctx = canvas.getContext('2d');
-    if (!ctx) throw new Error('No se pudo preparar el compresor de video');
+    if (!ctx) throw new Error('No se pudo preparar el canvas de video');
 
-    source.currentTime = 0;
-    await source.play().catch(() => undefined);
-
-    // Audio del original + video del canvas (para bajar resolución).
     audioTracks.push(...captureSourceAudioTracks(source));
     const canvasStream = canvas.captureStream(24);
     videoTracks.push(...canvasStream.getVideoTracks());
@@ -125,6 +177,12 @@ export async function compressVideoFile(
     const hasAudio = audioTracks.length > 0;
     const mimeType = pickMimeType(hasAudio);
 
+    // Bitrate suave: ~1.5 Mbps a 1280p, escala con tamaño objetivo.
+    const videoBitsPerSecond =
+      options?.videoBitsPerSecond ??
+      Math.min(2_500_000, Math.max(800_000, Math.round((maxBytes * 8) / Math.max(duration, 1) * 0.7)));
+    const audioBitsPerSecond = options?.audioBitsPerSecond ?? 128_000;
+
     const recorder = new MediaRecorder(combined, {
       mimeType,
       videoBitsPerSecond,
@@ -132,20 +190,18 @@ export async function compressVideoFile(
     });
 
     const chunks: BlobPart[] = [];
-    recorder.ondataavailable = (event) => {
-      if (event.data.size > 0) chunks.push(event.data);
+    recorder.ondataavailable = (e) => {
+      if (e.data.size) chunks.push(e.data);
     };
 
     const recorded = new Promise<Blob>((resolve, reject) => {
-      recorder.onerror = () => reject(new Error('Falló la compresión del video'));
-      recorder.onstop = () => {
-        const type = mimeType.split(';')[0] || 'video/webm';
-        resolve(new Blob(chunks, { type }));
-      };
+      recorder.onstop = () => resolve(new Blob(chunks, { type: mimeType }));
+      recorder.onerror = () => reject(new Error('Error al grabar el video comprimido'));
     });
 
-    // Un solo blob al final mejora el seek frente a timeslices muy cortos.
-    recorder.start();
+    recorder.start(250);
+    source.currentTime = 0;
+    await source.play();
 
     await new Promise<void>((resolve, reject) => {
       let frameId = 0;
@@ -181,9 +237,13 @@ export async function compressVideoFile(
       lastModified: Date.now(),
     });
 
+    if (compressed.size >= file.size * 0.95) {
+      return file; // no mejoró
+    }
+
     if (compressed.size > maxBytes) {
       throw new Error(
-        `Tras comprimir sigue pesando ${formatBytes(compressed.size)} (límite ${formatBytes(maxBytes)}). Usa YouTube o una URL MP4 externa.`,
+        `Tras comprimir sigue pesando ${formatBytes(compressed.size)} (límite ${formatBytes(maxBytes)}).`,
       );
     }
 
@@ -200,30 +260,57 @@ export async function compressVideoFile(
   }
 }
 
+/**
+ * Prepara el archivo antes de subir a GCS:
+ * - Imágenes: redimensiona/JPEG si > umbral
+ * - Videos: compresión suave si > 40 MB
+ * - Resto: sin cambios
+ */
 export async function prepareMediaFile(
   file: File,
   options?: {
     mediaType?: string;
+    /** @deprecated el destino es GCS; se usa solo como tope de seguridad */
     maxBytes?: number;
+    softCompressVideo?: boolean;
     onProgress?: (ratio: number) => void;
   },
 ): Promise<{ file: File; compressed: boolean }> {
-  const maxBytes = options?.maxBytes ?? INLINE_MEDIA_MAX_BYTES;
-  const isVideo = options?.mediaType === 'VIDEO' || file.type.startsWith('video/');
+  const mediaType = options?.mediaType ?? '';
+  const isVideo = mediaType === 'VIDEO' || file.type.startsWith('video/');
+  const isImage =
+    mediaType === 'IMAGE' ||
+    mediaType === 'COVER' ||
+    file.type.startsWith('image/');
 
-  if (file.size <= maxBytes) {
-    return { file, compressed: false };
+  if (isImage && file.size > IMAGE_COMPRESS_THRESHOLD_BYTES) {
+    try {
+      const compressed = await compressImageFile(file, {
+        maxWidth: mediaType === 'COVER' ? 1600 : 1920,
+        quality: 0.82,
+        onProgress: options?.onProgress,
+      });
+      return { file: compressed, compressed: compressed !== file && compressed.size < file.size };
+    } catch {
+      return { file, compressed: false };
+    }
   }
 
-  if (!isVideo) {
-    throw new Error(
-      `El archivo pesa ${formatBytes(file.size)}. El máximo inline es ${formatBytes(maxBytes)}. Usa una URL externa.`,
-    );
+  const soft = options?.softCompressVideo !== false;
+  if (isVideo && soft && file.size > VIDEO_SOFT_COMPRESS_BYTES) {
+    const compressed = await compressVideoFile(file, {
+      maxBytes: Math.min(
+        options?.maxBytes ?? VIDEO_SOFT_TARGET_BYTES,
+        MAX_MEDIA_UPLOAD_BYTES,
+      ),
+      maxWidth: 1280,
+      onProgress: options?.onProgress,
+    });
+    return {
+      file: compressed,
+      compressed: compressed !== file && compressed.size < file.size,
+    };
   }
 
-  const compressed = await compressVideoFile(file, {
-    maxBytes,
-    onProgress: options?.onProgress,
-  });
-  return { file: compressed, compressed: true };
+  return { file, compressed: false };
 }

@@ -5,7 +5,6 @@ import { Button } from './ui/Button';
 import { toast } from '../lib/toast';
 import {
   formatBytes,
-  INLINE_MEDIA_MAX_BYTES,
   MAX_MEDIA_UPLOAD_BYTES,
   prepareMediaFile,
 } from '../utils/compressVideo';
@@ -16,18 +15,9 @@ interface MediaUploadProps {
   mediaType?: string;
   currentFilename?: string | null;
   disabled?: boolean;
-  /**
-   * Si true (default en VIDEO): cuando GCS no está disponible, comprime archivos > 5 MB
-   * para intentar subirlos inline.
-   */
+  /** Si false, no comprime videos grandes (default: comprime suave > 40 MB). */
   compressLargeVideo?: boolean;
   onUploaded: (asset: { id: string; url: string; filename: string; mimeType: string }) => void;
-}
-
-function isGcsUnavailable(err: unknown): boolean {
-  if (!isAxiosError(err)) return false;
-  const status = err.response?.status;
-  return status === 503 || status === 500;
 }
 
 export function MediaUpload({
@@ -36,7 +26,7 @@ export function MediaUpload({
   mediaType,
   currentFilename,
   disabled = false,
-  compressLargeVideo,
+  compressLargeVideo = true,
   onUploaded,
 }: MediaUploadProps) {
   const inputRef = useRef<HTMLInputElement>(null);
@@ -44,74 +34,50 @@ export function MediaUpload({
   const [progressLabel, setProgressLabel] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  const shouldCompress =
-    compressLargeVideo ?? (mediaType === 'VIDEO' || Boolean(accept?.includes('video')));
-
   const handleFile = async (file: File) => {
     setUploading(true);
     setError(null);
     setProgressLabel(null);
     try {
       if (file.size > MAX_MEDIA_UPLOAD_BYTES) {
-        const msg = `El archivo pesa ${formatBytes(file.size)}. Máximo permitido: ${formatBytes(MAX_MEDIA_UPLOAD_BYTES)}.`;
+        const msg = `El archivo pesa ${formatBytes(file.size)}. Máximo: ${formatBytes(MAX_MEDIA_UPLOAD_BYTES)}.`;
         setError(msg);
         toast.warning(msg);
         return;
       }
 
-      // Archivos pequeños → Postgres inline
-      if (file.size <= INLINE_MEDIA_MAX_BYTES) {
-        setProgressLabel('Subiendo…');
-        const res = await mediaApi.upload(file, mediaType);
-        onUploaded(res.data.data);
-        toast.success('Archivo subido correctamente.');
-        return;
-      }
+      setProgressLabel('Optimizando…');
+      const prepared = await prepareMediaFile(file, {
+        mediaType,
+        softCompressVideo: compressLargeVideo,
+        onProgress: (ratio) => {
+          setProgressLabel(`Optimizando… ${Math.round(ratio * 100)}%`);
+        },
+      });
 
-      // Archivos grandes → GCS (signed URL)
-      try {
+      if (prepared.compressed) {
         toast.info(
-          `Subiendo ${formatBytes(file.size)} a Cloud Storage…`,
-          'Archivo grande',
-        );
-        setProgressLabel('Preparando subida…');
-        const asset = await mediaApi.uploadViaGcs(file, mediaType, (ratio) => {
-          setProgressLabel(`Subiendo a la nube… ${Math.round(ratio * 100)}%`);
-        });
-        onUploaded(asset);
-        toast.success('Archivo subido a Cloud Storage.');
-        return;
-      } catch (gcsErr) {
-        if (!shouldCompress || !isGcsUnavailable(gcsErr)) {
-          throw gcsErr;
-        }
-        // Fallback: comprimir e intentar inline si GCS no está configurado
-        toast.info(
-          `Cloud Storage no disponible. Comprimiendo a ≤ ${formatBytes(INLINE_MEDIA_MAX_BYTES)}…`,
+          `Optimizado: ${formatBytes(file.size)} → ${formatBytes(prepared.file.size)}`,
           'Compresión',
         );
-        setProgressLabel('Comprimiendo video…');
-        const prepared = await prepareMediaFile(file, {
-          mediaType: mediaType ?? 'VIDEO',
-          maxBytes: INLINE_MEDIA_MAX_BYTES,
-          onProgress: (ratio) => {
-            setProgressLabel(`Comprimiendo… ${Math.round(ratio * 100)}%`);
-          },
-        });
-        if (prepared.file.size > INLINE_MEDIA_MAX_BYTES) {
-          throw new Error(
-            `Tras comprimir sigue pesando ${formatBytes(prepared.file.size)}. Configura GCS_BUCKET o usa una URL externa.`,
-          );
-        }
-        setProgressLabel('Subiendo…');
-        const res = await mediaApi.upload(prepared.file, mediaType);
-        onUploaded(res.data.data);
-        toast.success(
-          prepared.compressed
-            ? `Comprimido a ${formatBytes(prepared.file.size)} y subido.`
-            : 'Archivo subido correctamente.',
+      }
+
+      if (prepared.file.size > MAX_MEDIA_UPLOAD_BYTES) {
+        throw new Error(
+          `Tras optimizar sigue pesando ${formatBytes(prepared.file.size)}. Máximo ${formatBytes(MAX_MEDIA_UPLOAD_BYTES)}.`,
         );
       }
+
+      setProgressLabel('Subiendo a la nube…');
+      const asset = await mediaApi.uploadViaGcs(prepared.file, mediaType, (ratio) => {
+        setProgressLabel(`Subiendo… ${Math.round(ratio * 100)}%`);
+      });
+      onUploaded(asset);
+      toast.success(
+        prepared.compressed
+          ? `Subido a Cloud Storage (${formatBytes(prepared.file.size)}).`
+          : 'Archivo subido a Cloud Storage.',
+      );
     } catch (err) {
       const message = isAxiosError(err)
         ? String(
@@ -135,9 +101,9 @@ export function MediaUpload({
       <label className="block text-sm font-medium text-theme-secondary">{label}</label>
       {currentFilename ? (
         <p className="text-sm text-theme-muted truncate">Archivo: {currentFilename}</p>
-      ) : (
-        disabled ? <p className="text-sm text-theme-muted">Sin archivo</p> : null
-      )}
+      ) : disabled ? (
+        <p className="text-sm text-theme-muted">Sin archivo</p>
+      ) : null}
       {!disabled ? (
         <>
           <input
@@ -159,15 +125,16 @@ export function MediaUpload({
             onClick={() => inputRef.current?.click()}
           >
             {uploading
-              ? progressLabel ?? 'Subiendo...'
+              ? (progressLabel ?? 'Subiendo...')
               : currentFilename
                 ? 'Reemplazar archivo'
                 : 'Subir archivo'}
           </Button>
           <p className="text-xs text-theme-muted">
-            Hasta {formatBytes(INLINE_MEDIA_MAX_BYTES)} se guarda en la base de datos. De ahí hasta{' '}
-            {formatBytes(MAX_MEDIA_UPLOAD_BYTES)} se sube a Cloud Storage. También puedes usar
-            YouTube o una URL MP4 externa.
+            Todo el multimedia se guarda en Cloud Storage (máx.{' '}
+            {formatBytes(MAX_MEDIA_UPLOAD_BYTES)}). Las imágenes se optimizan
+            automáticamente; los videos grandes (&gt; 40 MB) se comprimen un poco antes de
+            subir.
           </p>
         </>
       ) : null}

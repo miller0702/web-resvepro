@@ -41,14 +41,7 @@ function resolveDirectPlayUrl(source: VideoPreviewSource): {
     return { youtubeId, externalUrl: null, mediaId: null };
   }
 
-  const mediaId =
-    source.mediaId ||
-    (source.videoUrl ? extractMediaIdFromContentPath(source.videoUrl) : null);
-
-  if (mediaId) {
-    return { youtubeId: null, externalUrl: null, mediaId };
-  }
-
+  // Preferir URL absoluta (GCS/CDN/MP4) antes que mediaId → /content (solo INLINE).
   if (source.videoUrl && isAbsoluteHttpUrl(source.videoUrl)) {
     return { youtubeId: null, externalUrl: source.videoUrl.trim(), mediaId: null };
   }
@@ -56,6 +49,14 @@ function resolveDirectPlayUrl(source: VideoPreviewSource): {
   const resolved = resolveApiMediaUrl(source.videoUrl);
   if (resolved && isAbsoluteHttpUrl(resolved) && !extractMediaIdFromContentPath(resolved)) {
     return { youtubeId: null, externalUrl: resolved, mediaId: null };
+  }
+
+  const mediaId =
+    source.mediaId ||
+    (source.videoUrl ? extractMediaIdFromContentPath(source.videoUrl) : null);
+
+  if (mediaId) {
+    return { youtubeId: null, externalUrl: null, mediaId };
   }
 
   return { youtubeId: null, externalUrl: null, mediaId: null };
@@ -187,12 +188,12 @@ export function VideoPreviewPlayer({
   } else if (mediaId) {
     if (auth.loading) {
       player = <EmptyPlayer message="Cargando video…" />;
-    } else if (auth.error || !auth.blobUrl) {
+    } else if (auth.error || !auth.playUrl) {
       player = <EmptyPlayer message={auth.error ?? 'Video no disponible'} />;
     } else {
       player = (
         <PlayerShell>
-          <DirectVideo src={auth.blobUrl} />
+          <DirectVideo src={auth.playUrl} />
         </PlayerShell>
       );
     }
