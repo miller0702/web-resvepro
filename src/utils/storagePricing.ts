@@ -23,7 +23,10 @@ export function formatCopFromUsd(usd: number, decimals = 0): string {
 }
 
 export function formatCopPerMonthFromUsd(usd: number, decimals = 0): string {
-  return `~ ${formatCopFromUsd(usd, decimals)} / mes`;
+  const cop = usdToCop(usd);
+  // Costes muy bajos (pocos MB): mostrar centavos de peso si hace falta.
+  const digits = cop > 0 && cop < 1 ? 2 : decimals;
+  return `~ ${formatCop(cop, digits)} / mes`;
 }
 
 export function formatCopMonthlyRangeFromUsd(minUsd: number, maxUsd: number): string {

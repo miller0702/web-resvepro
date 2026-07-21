@@ -44,6 +44,9 @@ const TYPE_LABELS: Record<string, string> = {
   OTHER: 'Otros',
 };
 
+/** Tipos que siempre se muestran en el panel (aunque no haya archivos). */
+const ALWAYS_SHOW_TYPES = ['VIDEO', 'AUDIO', 'IMAGE', 'COVER'] as const;
+
 function clampRatio(value: number) {
   if (!Number.isFinite(value) || value < 0) return 0;
   return Math.min(1, value);
@@ -61,29 +64,64 @@ function StorageProgressBar({
   usedBytes,
   budgetBytes,
   toneRatio,
+  count,
+  unknownSize,
+  /** Si true, el % es proporción del total medido (no un presupuesto de capacidad). */
+  shareOfTotal = false,
 }: {
   label: string;
   detail?: string;
   usedBytes: number;
   budgetBytes: number;
-  /** Si se pasa, colorea según este ratio; si no, según used/budget. */
   toneRatio?: number;
+  count?: number;
+  unknownSize?: boolean;
+  shareOfTotal?: boolean;
 }) {
   const ratio = clampRatio(budgetBytes > 0 ? usedBytes / budgetBytes : 0);
-  const tone = barTone(toneRatio ?? ratio);
+  const tone = unknownSize ? 'bg-gold/70' : barTone(toneRatio ?? ratio);
   const pct = Math.round(ratio * 1000) / 10;
+  // Capacidad real: no inflar la barra; proporción entre tipos: mínimo visible si hay bytes.
+  const visualWidth =
+    usedBytes > 0
+      ? shareOfTotal
+        ? Math.min(100, Math.max(pct, 1.5))
+        : Math.min(100, pct)
+      : unknownSize && (count ?? 0) > 0
+        ? 4
+        : 0;
 
   return (
     <div className="space-y-2">
       <div className="flex items-end justify-between gap-3">
         <div className="min-w-0">
-          <p className="text-sm font-medium text-theme">{label}</p>
+          <p className="text-sm font-medium text-theme">
+            {label}
+            {typeof count === 'number' ? (
+              <span className="ml-2 text-xs font-normal text-theme-muted">
+                ({count} archivo{count === 1 ? '' : 's'})
+              </span>
+            ) : null}
+          </p>
           {detail ? <p className="text-xs text-theme-muted">{detail}</p> : null}
         </div>
         <p className="shrink-0 text-sm tabular-nums text-theme-secondary">
-          {formatBytes(usedBytes)}
-          <span className="text-theme-muted"> / {formatBytes(budgetBytes)}</span>
-          <span className="ml-2 font-medium text-theme">{pct}%</span>
+          {unknownSize && usedBytes === 0 ? (
+            <span className="text-theme-muted">tamaño pendiente</span>
+          ) : shareOfTotal ? (
+            <>
+              {formatBytes(usedBytes)}
+              <span className="ml-2 font-medium text-theme">
+                {pct}% <span className="font-normal text-theme-muted">del total</span>
+              </span>
+            </>
+          ) : (
+            <>
+              {formatBytes(usedBytes)}
+              <span className="text-theme-muted"> / {formatBytes(budgetBytes)}</span>
+              <span className="ml-2 font-medium text-theme">{pct}%</span>
+            </>
+          )}
         </p>
       </div>
       <div
@@ -96,7 +134,7 @@ function StorageProgressBar({
       >
         <div
           className={`h-full rounded-full transition-all duration-500 ease-out ${tone}`}
-          style={{ width: `${Math.min(100, Math.max(pct, usedBytes > 0 ? 1.5 : 0))}%` }}
+          style={{ width: `${visualWidth}%` }}
         />
       </div>
     </div>
@@ -107,28 +145,44 @@ export function StorageGuidePage() {
   const { data, isLoading, isError } = useQuery({
     queryKey: ['media-storage-usage'],
     queryFn: async () => (await mediaApi.storageUsage()).data.data,
-    staleTime: 60_000,
+    staleTime: 30_000,
   });
 
   const typeBars = useMemo(() => {
-    if (!data?.byType?.length) return [];
-    const maxType = Math.max(...data.byType.map((t) => t.bytes), 1);
-    return data.byType.map((row) => ({
-      ...row,
-      label: TYPE_LABELS[row.type] ?? row.type,
-      // Barras relativas al tipo más pesado (no al presupuesto global).
-      relativeBudget: maxType,
-    }));
+    const byType = new Map(
+      (data?.byType ?? []).map((row) => [row.type, row] as const),
+    );
+    const types = new Set<string>([
+      ...ALWAYS_SHOW_TYPES,
+      ...(data?.byType ?? []).map((t) => t.type),
+    ]);
+    const rows = [...types].map((type) => {
+      const row = byType.get(type);
+      return {
+        type,
+        label: TYPE_LABELS[type] ?? type,
+        bytes: row?.bytes ?? 0,
+        count: row?.count ?? 0,
+        unknownSizeCount: row?.unknownSizeCount ?? 0,
+      };
+    });
+    return rows
+      .sort((a, b) => b.bytes - a.bytes || b.count - a.count)
+      .map((row) => ({
+        ...row,
+        unknownSize:
+          row.count > 0 && (row.bytes === 0 || row.unknownSizeCount > 0),
+      }));
   }, [data]);
 
   return (
-    <div className="mx-auto max-w-4xl space-y-8">
+    <div className="w-full space-y-8">
       <PageHeader
         title="Almacenamiento y costes"
         subtitle="Directorio para administradores: uso actual del multimedia, presupuestos recomendados y costes orientativos en pesos colombianos (COP)."
       />
 
-      <section className="glass-card space-y-5 p-6 sm:p-8">
+      <section className="glass-card w-full space-y-5 p-6 sm:p-8">
         <div className="flex items-start gap-3">
           <HardDrive className="mt-0.5 h-5 w-5 shrink-0 text-gold-dim dark:text-gold-light" strokeWidth={1.75} />
           <div className="min-w-0 flex-1">
@@ -153,40 +207,94 @@ export function StorageGuidePage() {
                 <strong className="font-medium text-theme">{data.totalCount}</strong>
               </span>
               <span className="rounded-lg border border-[var(--color-border)] px-3 py-1.5 text-theme-secondary">
+                Peso medido:{' '}
+                <strong className="font-medium text-theme">{formatBytes(data.totalBytes)}</strong>
+              </span>
+              <span className="rounded-lg border border-[var(--color-border)] px-3 py-1.5 text-theme-secondary">
+                En tu bucket:{' '}
+                <strong className="font-medium text-theme">
+                  {formatBytes(data.gcsBytes ?? 0)}
+                </strong>
+                <span className="text-theme-muted">
+                  {' '}
+                  ({data.gcsCount ?? 0} archivo{(data.gcsCount ?? 0) === 1 ? '' : 's'})
+                </span>
+              </span>
+              <span className="rounded-lg border border-[var(--color-border)] px-3 py-1.5 text-theme-secondary">
                 Bucket:{' '}
                 <strong className="font-medium text-theme">
                   {data.bucket || (data.configured ? 'configurado' : 'no configurado')}
                 </strong>
               </span>
               <span className="rounded-lg border border-[var(--color-border)] px-3 py-1.5 text-theme-secondary">
-                Coste guardar (est.):{' '}
+                Coste guardar en bucket (est.):{' '}
                 <strong className="font-medium text-theme">
                   {formatCopPerMonthFromUsd(data.estimatedStorageUsdMonth)}
                 </strong>
               </span>
             </div>
 
+            {(data.unknownSizeCount ?? 0) > 0 ? (
+              <p className="rounded-xl border border-gold/30 bg-gold/5 px-4 py-3 text-sm text-theme-secondary">
+                Hay <strong className="text-theme">{data.unknownSizeCount}</strong> archivo
+                {(data.unknownSizeCount ?? 0) === 1 ? '' : 's'} sin tamaño registrado (p. ej. URLs
+                externas del seed). Al abrir esta página se intenta detectar el peso; YouTube no
+                ocupa espacio en el bucket.
+                {(data.sizesRefreshed ?? 0) > 0
+                  ? ` Se actualizaron ${data.sizesRefreshed} en esta consulta.`
+                  : ''}
+              </p>
+            ) : null}
+
+            {(data.remoteUrlCount ?? 0) > 0 ? (
+              <p className="rounded-xl border border-[var(--color-border)] bg-black/[0.02] px-4 py-3 text-sm text-theme-secondary dark:bg-white/[0.03]">
+                Hay <strong className="text-theme">{data.remoteUrlCount}</strong> archivo
+                {(data.remoteUrlCount ?? 0) === 1 ? '' : 's'} con URL externa (
+                {formatBytes(data.remoteUrlBytes ?? 0)}). Cuentan en el peso medido, pero{' '}
+                <strong className="text-theme">no ocupan ni facturan</strong> tu bucket{' '}
+                {data.bucket ? (
+                  <code className="rounded bg-black/5 px-1 text-xs dark:bg-white/10">{data.bucket}</code>
+                ) : (
+                  'GCS'
+                )}
+                .
+              </p>
+            ) : null}
+
             <StorageProgressBar
               label="Presupuesto cómodo (300 GB)"
-              detail="Zona recomendada para empezar sin preocuparte por el almacenamiento."
-              usedBytes={data.totalBytes}
+              detail="Zona recomendada para empezar sin preocuparte por el almacenamiento. Solo cuenta lo de tu bucket."
+              usedBytes={data.gcsBytes ?? 0}
               budgetBytes={data.softBudgetBytes}
+              count={data.gcsCount ?? 0}
             />
 
             <StorageProgressBar
               label="Presupuesto alto (500 GB)"
               detail="Si te acercas a este nivel, revisa compresión, YouTube para videos largos y alertas en GCP."
-              usedBytes={data.totalBytes}
+              usedBytes={data.gcsBytes ?? 0}
               budgetBytes={data.highBudgetBytes}
+              count={data.gcsCount ?? 0}
             />
 
-            <div className="grid gap-4 sm:grid-cols-2">
+            <div className="grid gap-4 sm:grid-cols-1 md:grid-cols-3">
               <StorageProgressBar
-                label="En Cloud Storage"
-                detail="Assets EXTERNAL (GCS)."
-                usedBytes={data.externalBytes}
+                label="En tu bucket GCS"
+                detail={`Archivos subidos a ${data.bucket || 'Cloud Storage'}. Sí facturan almacenamiento.`}
+                usedBytes={data.gcsBytes ?? 0}
                 budgetBytes={Math.max(data.totalBytes, 1)}
-                toneRatio={clampRatio(data.totalBytes / data.softBudgetBytes)}
+                toneRatio={clampRatio((data.gcsBytes ?? 0) / data.softBudgetBytes)}
+                count={data.gcsCount ?? 0}
+                shareOfTotal
+              />
+              <StorageProgressBar
+                label="URLs externas"
+                detail="Enlaces públicos o del seed (p. ej. demos). No viven en tu bucket."
+                usedBytes={data.remoteUrlBytes ?? 0}
+                budgetBytes={Math.max(data.totalBytes, 1)}
+                toneRatio={0.35}
+                count={data.remoteUrlCount ?? 0}
+                shareOfTotal
               />
               <StorageProgressBar
                 label="Legado en base de datos"
@@ -194,33 +302,43 @@ export function StorageGuidePage() {
                 usedBytes={data.inlineBytes}
                 budgetBytes={Math.max(data.totalBytes, 1)}
                 toneRatio={data.inlineBytes > 0 ? 0.7 : 0}
+                shareOfTotal
               />
             </div>
 
-            {typeBars.length > 0 ? (
-              <div className="space-y-4 border-t border-[var(--color-border)] pt-5">
-                <h3 className="text-sm font-semibold text-theme">Por tipo de contenido</h3>
-                <div className="space-y-4">
-                  {typeBars.map((row) => (
-                    <StorageProgressBar
-                      key={row.type}
-                      label={row.label}
-                      detail={`${row.count} archivo${row.count === 1 ? '' : 's'}`}
-                      usedBytes={row.bytes}
-                      budgetBytes={row.relativeBudget}
-                      toneRatio={clampRatio(data.totalBytes / data.softBudgetBytes)}
-                    />
-                  ))}
-                </div>
+            <div className="space-y-4 border-t border-[var(--color-border)] pt-5">
+              <h3 className="text-sm font-semibold text-theme">Por tipo de contenido</h3>
+              <p className="text-xs text-theme-muted">
+                El porcentaje es respecto al presupuesto cómodo de 300 GB (igual que arriba), no
+                “lleno al 100%”. Imágenes/portadas solo cuentan si subiste archivos; YouTube no suma
+                bytes en el bucket.
+              </p>
+              <div className="space-y-4">
+                {typeBars.map((row) => (
+                  <StorageProgressBar
+                    key={row.type}
+                    label={row.label}
+                    detail={
+                      row.count === 0
+                        ? 'Sin archivos de este tipo'
+                        : row.unknownSize
+                          ? 'Registrados, pero el peso aún no se pudo medir'
+                          : undefined
+                    }
+                    usedBytes={row.bytes}
+                    budgetBytes={data.softBudgetBytes}
+                    toneRatio={clampRatio((data.gcsBytes ?? 0) / data.softBudgetBytes)}
+                    count={row.count}
+                    unknownSize={row.unknownSize}
+                  />
+                ))}
               </div>
-            ) : (
-              <p className="text-sm text-theme-muted">Aún no hay archivos multimedia registrados.</p>
-            )}
+            </div>
           </div>
         )}
       </section>
 
-      <section className="glass-card space-y-4 p-6 sm:p-8">
+      <section className="glass-card w-full space-y-4 p-6 sm:p-8">
         <div className="flex items-start gap-3">
           <Cloud className="mt-0.5 h-5 w-5 shrink-0 text-gold-dim dark:text-gold-light" strokeWidth={1.75} />
           <div>
@@ -235,7 +353,7 @@ export function StorageGuidePage() {
         </div>
       </section>
 
-      <section className="glass-card space-y-4 p-6 sm:p-8">
+      <section className="glass-card w-full space-y-4 p-6 sm:p-8">
         <div className="flex items-start gap-3">
           <Upload className="mt-0.5 h-5 w-5 shrink-0 text-gold-dim dark:text-gold-light" strokeWidth={1.75} />
           <div className="min-w-0 flex-1">
@@ -266,7 +384,7 @@ export function StorageGuidePage() {
         </div>
       </section>
 
-      <section className="glass-card space-y-5 p-6 sm:p-8">
+      <section className="glass-card w-full space-y-5 p-6 sm:p-8">
         <div className="flex items-start gap-3">
           <DollarSign className="mt-0.5 h-5 w-5 shrink-0 text-gold-dim dark:text-gold-light" strokeWidth={1.75} />
           <div className="min-w-0 flex-1">
@@ -358,7 +476,7 @@ export function StorageGuidePage() {
         </div>
       </section>
 
-      <section className="glass-card space-y-4 p-6 sm:p-8">
+      <section className="glass-card w-full space-y-4 p-6 sm:p-8">
         <div className="flex items-start gap-3">
           <Info className="mt-0.5 h-5 w-5 shrink-0 text-gold-dim dark:text-gold-light" strokeWidth={1.75} />
           <div>

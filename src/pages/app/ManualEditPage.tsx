@@ -82,7 +82,7 @@ export function ManualEditPage() {
   const isVisible = watch('isVisible');
 
   return (
-    <div className="max-w-3xl">
+    <div className="w-full">
       <PageHeader
         title={`Editar: ${section.title}`}
         subtitle={`Sección del manual (${section.audience === 'PANEL' ? 'panel web' : 'app móvil'}) · ${section.code}`}
@@ -91,7 +91,7 @@ export function ManualEditPage() {
 
       <form
         onSubmit={handleSubmit((values) => saveMutation.mutate(values))}
-        className="glass-card space-y-5 p-8"
+        className="glass-card w-full space-y-5 p-8"
       >
         <Input label="Título" {...register('title', { required: true })} />
         <div className="space-y-1.5">

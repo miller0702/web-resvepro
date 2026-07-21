@@ -46,7 +46,18 @@ export const mediaApi = {
         totalCount: number;
         externalBytes: number;
         inlineBytes: number;
-        byType: { type: string; bytes: number; count: number }[];
+        gcsBytes?: number;
+        gcsCount?: number;
+        remoteUrlBytes?: number;
+        remoteUrlCount?: number;
+        unknownSizeCount?: number;
+        sizesRefreshed?: number;
+        byType: {
+          type: string;
+          bytes: number;
+          count: number;
+          unknownSizeCount?: number;
+        }[];
         softBudgetBytes: number;
         highBudgetBytes: number;
         usdPerGbMonth: number;

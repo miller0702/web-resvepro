@@ -156,7 +156,7 @@ export function UserFormPage() {
 
   if (isEdit && isView) {
     return (
-      <div className="w-full max-w-2xl space-y-6">
+      <div className="w-full space-y-6">
         <PageHeader title={displayName} subtitle="Vista de detalle" action={headerActions} backTo="/users" />
 
         <DetailSection>
@@ -206,7 +206,7 @@ export function UserFormPage() {
   }
 
   return (
-    <div className="w-full max-w-2xl">
+    <div className="w-full">
       <PageHeader
         title={isEdit ? 'Editar usuario' : 'Nuevo usuario'}
         backTo="/users"
@@ -220,7 +220,7 @@ export function UserFormPage() {
 
       <form
         onSubmit={handleSubmit((d) => saveMutation.mutate(d))}
-        className="glass-card space-y-5 p-8"
+        className="glass-card w-full space-y-5 p-8"
       >
         <Input label="Email" type="email" error={errors.email?.message} {...register('email')} disabled={isEdit} />
         <Input label="Usuario" error={errors.username?.message} {...register('username')} disabled={isEdit} />

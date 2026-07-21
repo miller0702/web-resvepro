@@ -80,7 +80,7 @@ export function TutorialEditPage() {
   const isVisible = watch('isVisible');
 
   return (
-    <div className="max-w-3xl">
+    <div className="w-full">
       <PageHeader
         title={`Editar paso: ${step.title}`}
         subtitle={`Tutorial de bienvenida · ${step.code}`}
@@ -89,7 +89,7 @@ export function TutorialEditPage() {
 
       <form
         onSubmit={handleSubmit((values) => saveMutation.mutate(values))}
-        className="glass-card space-y-5 p-8"
+        className="glass-card w-full space-y-5 p-8"
       >
         <Input label="Título" {...register('title', { required: true })} />
         <div className="space-y-1.5">
