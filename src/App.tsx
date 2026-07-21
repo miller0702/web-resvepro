@@ -33,6 +33,7 @@ import { TutorialEditPage } from './pages/app/TutorialEditPage';
 import { LegalPublicPage } from './pages/legal/LegalPublicPage';
 import { AccountDeletionPage } from './pages/legal/AccountDeletionPage';
 import { HelpManualPage } from './pages/HelpManualPage';
+import { StorageGuidePage } from './pages/StorageGuidePage';
 
 export default function App() {
   return (
@@ -66,6 +67,7 @@ export default function App() {
         <Route path="videos/:id" element={<VideoFormPage />} />
         <Route path="radio" element={<RadioListPage />} />
         <Route path="radio/:id" element={<RadioFormPage />} />
+        <Route path="storage" element={<StorageGuidePage />} />
         <Route path="users" element={<UsersPage />} />
         <Route path="users/new" element={<UserFormPage />} />
         <Route path="users/:id/edit" element={<UserFormPage />} />

@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { useNavigate, useParams } from 'react-router-dom';
+import { Link, useNavigate, useParams } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { adminApi } from '../../api/admin';
 import { mediaApi } from '../../api/media';
@@ -385,9 +385,15 @@ export function VideoFormPage() {
           <div className="space-y-3 rounded-xl border p-4" style={{ borderColor: 'var(--color-border)' }}>
             <p className="text-sm font-medium text-theme">Opción B — Subir archivo</p>
             <p className="text-xs text-theme-muted">
-              El archivo se sube a Cloud Storage (hasta 100 MB). Las imágenes se optimizan
-              solas; videos &gt; 40 MB se comprimen un poco. También puedes usar YouTube o una
-              URL MP4 (opción A).
+              Sin límite de tamaño: el archivo va a Cloud Storage. Se optimiza automáticamente para
+              bajar costes. También puedes usar YouTube o una URL MP4 (opción A).{' '}
+              <Link
+                to="/storage"
+                className="text-gold-dim underline-offset-2 hover:underline dark:text-gold-light"
+              >
+                Guía de facturación
+              </Link>
+              .
             </p>
             <MediaUpload
               label="Archivo de video"

@@ -1,6 +1,7 @@
 import type { LucideIcon } from 'lucide-react';
 import {
   BookOpen,
+  Cloud,
   Flag,
   FolderOpen,
   LayoutDashboard,
@@ -57,6 +58,7 @@ export const navGroups: NavGroup[] = [
       { to: '/podcasts', label: 'Podcasts', icon: Mic2 },
       { to: '/videos', label: 'Videos', icon: Video },
       { to: '/radio', label: 'Radio', icon: Radio },
+      { to: '/storage', label: 'Almacenamiento', icon: Cloud },
     ],
   },
   {
@@ -99,6 +101,7 @@ export const routeTitles: Record<string, string> = {
   '/videos/new': 'Nuevo video',
   '/radio': 'Radio',
   '/radio/new': 'Nueva emisora',
+  '/storage': 'Almacenamiento y costes',
   '/users': 'Usuarios',
   '/users/new': 'Nuevo usuario',
   '/audit': 'Auditoría',

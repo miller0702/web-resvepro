@@ -1,20 +1,24 @@
-/** Límites de subida multimedia (GCS es el almacén canónico). */
+/** Límites de referencia (GCS es el almacén canónico; sin tope duro de tamaño). */
 export const INLINE_MEDIA_MAX_BYTES = 5 * 1024 * 1024; // solo fallback sin GCS
-export const MAX_MEDIA_UPLOAD_BYTES = 100 * 1024 * 1024;
 
-/** Comprimir video ligeramente si supera este tamaño (sigue yendo a GCS). */
-export const VIDEO_SOFT_COMPRESS_BYTES = 40 * 1024 * 1024;
+/** Aviso en UI: subidas muy grandes pueden tardar. */
+export const VIDEO_LARGE_WARNING_BYTES = 500 * 1024 * 1024;
 
-/** Objetivo tras compresión suave de video. */
-export const VIDEO_SOFT_TARGET_BYTES = 80 * 1024 * 1024;
+/** Comprimir video si supera este tamaño. */
+export const VIDEO_SOFT_COMPRESS_BYTES = 15 * 1024 * 1024;
+
+/** Objetivo orientativo tras compresión (no es un rechazo duro). */
+export const VIDEO_SOFT_TARGET_BYTES = 60 * 1024 * 1024;
 
 /** Comprimir imágenes si superan este tamaño. */
 export const IMAGE_COMPRESS_THRESHOLD_BYTES = 200 * 1024;
 
 export function formatBytes(bytes: number): string {
+  if (!Number.isFinite(bytes) || bytes < 0) return '0 B';
   if (bytes < 1024) return `${bytes} B`;
   if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
-  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+  if (bytes < 1024 * 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+  return `${(bytes / (1024 * 1024 * 1024)).toFixed(2)} GB`;
 }
 
 /**
@@ -241,12 +245,7 @@ export async function compressVideoFile(
       return file; // no mejoró
     }
 
-    if (compressed.size > maxBytes) {
-      throw new Error(
-        `Tras comprimir sigue pesando ${formatBytes(compressed.size)} (límite ${formatBytes(maxBytes)}).`,
-      );
-    }
-
+    // Ya no rechazamos por tamaño: devolvemos lo mejor que logramos.
     return compressed;
   } finally {
     for (const track of [...audioTracks, ...videoTracks]) {
@@ -263,15 +262,13 @@ export async function compressVideoFile(
 /**
  * Prepara el archivo antes de subir a GCS:
  * - Imágenes: redimensiona/JPEG si > umbral
- * - Videos: compresión suave si > 40 MB
+ * - Videos: compresión suave/adaptativa si > 15 MB (sin tope de rechazo)
  * - Resto: sin cambios
  */
 export async function prepareMediaFile(
   file: File,
   options?: {
     mediaType?: string;
-    /** @deprecated el destino es GCS; se usa solo como tope de seguridad */
-    maxBytes?: number;
     softCompressVideo?: boolean;
     onProgress?: (ratio: number) => void;
   },
@@ -298,18 +295,27 @@ export async function prepareMediaFile(
 
   const soft = options?.softCompressVideo !== false;
   if (isVideo && soft && file.size > VIDEO_SOFT_COMPRESS_BYTES) {
-    const compressed = await compressVideoFile(file, {
-      maxBytes: Math.min(
-        options?.maxBytes ?? VIDEO_SOFT_TARGET_BYTES,
-        MAX_MEDIA_UPLOAD_BYTES,
-      ),
-      maxWidth: 1280,
-      onProgress: options?.onProgress,
-    });
-    return {
-      file: compressed,
-      compressed: compressed !== file && compressed.size < file.size,
-    };
+    // Más agresivo en archivos enormes: 960p si > 300 MB.
+    const maxWidth = file.size > 300 * 1024 * 1024 ? 960 : 1280;
+    const target =
+      file.size > 200 * 1024 * 1024
+        ? Math.min(file.size * 0.35, 120 * 1024 * 1024)
+        : Math.min(file.size * 0.55, VIDEO_SOFT_TARGET_BYTES);
+
+    try {
+      const compressed = await compressVideoFile(file, {
+        maxBytes: target,
+        maxWidth,
+        onProgress: options?.onProgress,
+      });
+      return {
+        file: compressed,
+        compressed: compressed !== file && compressed.size < file.size,
+      };
+    } catch {
+      // Si falla la compresión, subimos el original (sin límite de tamaño).
+      return { file, compressed: false };
+    }
   }
 
   return { file, compressed: false };

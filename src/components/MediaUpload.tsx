@@ -1,12 +1,14 @@
 import { useRef, useState } from 'react';
 import { isAxiosError } from 'axios';
+import { Link } from 'react-router-dom';
 import { mediaApi } from '../api/media';
 import { Button } from './ui/Button';
 import { toast } from '../lib/toast';
 import {
   formatBytes,
-  MAX_MEDIA_UPLOAD_BYTES,
   prepareMediaFile,
+  VIDEO_LARGE_WARNING_BYTES,
+  VIDEO_SOFT_COMPRESS_BYTES,
 } from '../utils/compressVideo';
 
 interface MediaUploadProps {
@@ -15,7 +17,7 @@ interface MediaUploadProps {
   mediaType?: string;
   currentFilename?: string | null;
   disabled?: boolean;
-  /** Si false, no comprime videos grandes (default: comprime suave > 40 MB). */
+  /** Si false, no comprime videos (default: comprime si > 15 MB). */
   compressLargeVideo?: boolean;
   onUploaded: (asset: { id: string; url: string; filename: string; mimeType: string }) => void;
 }
@@ -39,11 +41,11 @@ export function MediaUpload({
     setError(null);
     setProgressLabel(null);
     try {
-      if (file.size > MAX_MEDIA_UPLOAD_BYTES) {
-        const msg = `El archivo pesa ${formatBytes(file.size)}. Máximo: ${formatBytes(MAX_MEDIA_UPLOAD_BYTES)}.`;
-        setError(msg);
-        toast.warning(msg);
-        return;
+      if (file.size > VIDEO_LARGE_WARNING_BYTES) {
+        toast.info(
+          `El archivo pesa ${formatBytes(file.size)}. Se comprimirá si es video y la subida puede tardar varios minutos.`,
+          'Archivo grande',
+        );
       }
 
       setProgressLabel('Optimizando…');
@@ -59,12 +61,6 @@ export function MediaUpload({
         toast.info(
           `Optimizado: ${formatBytes(file.size)} → ${formatBytes(prepared.file.size)}`,
           'Compresión',
-        );
-      }
-
-      if (prepared.file.size > MAX_MEDIA_UPLOAD_BYTES) {
-        throw new Error(
-          `Tras optimizar sigue pesando ${formatBytes(prepared.file.size)}. Máximo ${formatBytes(MAX_MEDIA_UPLOAD_BYTES)}.`,
         );
       }
 
@@ -131,10 +127,12 @@ export function MediaUpload({
                 : 'Subir archivo'}
           </Button>
           <p className="text-xs text-theme-muted">
-            Todo el multimedia se guarda en Cloud Storage (máx.{' '}
-            {formatBytes(MAX_MEDIA_UPLOAD_BYTES)}). Las imágenes se optimizan
-            automáticamente; los videos grandes (&gt; 40 MB) se comprimen un poco antes de
-            subir.
+            Sin límite de tamaño. Se guarda en Cloud Storage. Imágenes y videos (&gt;{' '}
+            {formatBytes(VIDEO_SOFT_COMPRESS_BYTES)}) se optimizan para bajar costes.{' '}
+            <Link to="/storage" className="text-gold-dim underline-offset-2 hover:underline dark:text-gold-light">
+              Ver guía de facturación
+            </Link>
+            .
           </p>
         </>
       ) : null}

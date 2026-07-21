@@ -29,8 +29,30 @@ export const mediaApi = {
 
   gcsStatus: () =>
     apiClient.get<{
-      data: { configured: boolean; inlineMaxBytes: number; maxUploadBytes: number };
+      data: {
+        configured: boolean;
+        bucket?: string | null;
+        inlineMaxBytes: number;
+        maxUploadBytes: number;
+      };
     }>('/media/gcs/status'),
+
+  storageUsage: () =>
+    apiClient.get<{
+      data: {
+        configured: boolean;
+        bucket: string | null;
+        totalBytes: number;
+        totalCount: number;
+        externalBytes: number;
+        inlineBytes: number;
+        byType: { type: string; bytes: number; count: number }[];
+        softBudgetBytes: number;
+        highBudgetBytes: number;
+        usdPerGbMonth: number;
+        estimatedStorageUsdMonth: number;
+      };
+    }>('/media/gcs/usage'),
 
   createGcsUploadUrl: (data: {
     filename: string;
